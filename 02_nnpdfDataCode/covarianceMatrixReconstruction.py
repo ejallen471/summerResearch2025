@@ -1,3 +1,9 @@
+#############################################################################
+
+# Construct the covariance and correlation matrices - no efficiency / speed measures
+
+#############################################################################
+
 import pickle
 import numpy as np
 from pathlib import Path
@@ -632,22 +638,17 @@ def construct_covariance_matrix(keys_flav, res_flav, numberOfGridPoints):
                     cov_full_empirical[j_pos, j_pos] += covMatrix_empirical[1, 1]
                     count_matrix_empirical[j_pos, j_pos] += 1
 
-    # Normalise covariances
+    # Normalise
     with np.errstate(invalid='ignore', divide='ignore'):
         normalised_cov_kde = np.divide(cov_full, count_matrix, where=count_matrix > 0)
         normalised_covEmpirical = np.divide(cov_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
 
-    # Compute correlation matrices from normalised covariance matrices
-    std_kde = np.sqrt(np.diag(normalised_cov_kde))
-    std_empirical = np.sqrt(np.diag(normalised_covEmpirical))
+    D_inv_kde = np.diag(1 / np.sqrt(np.diag(normalised_cov_kde)))
+    D_inv_empirical = np.diag(1 / np.sqrt(np.diag(normalised_covEmpirical)))
 
-    # Outer product of standard deviations
-    denom_kde = np.outer(std_kde, std_kde)
-    denom_empirical = np.outer(std_empirical, std_empirical)
-
-    with np.errstate(divide='ignore', invalid='ignore'):  # suppress runtime errors (division by zero)
-        correlation_kde = np.divide(normalised_cov_kde, denom_kde, where=denom_kde > 0)
-        correlation_empirical = np.divide(normalised_covEmpirical, denom_empirical, where=denom_empirical > 0)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        correlation_kde = D_inv_kde @ normalised_cov_kde @ D_inv_kde
+        correlation_empirical = D_inv_empirical @ normalised_covEmpirical @ D_inv_empirical
 
     return normalised_cov_kde, correlation_kde, normalised_covEmpirical, correlation_empirical
 
@@ -700,22 +701,38 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
 
     # --- Construct the co-variance matrix from the data empirically 
     if empiricalReconstruction == True:
-
         dataMatrix = prepare_data_rangeIndices(res_flav, keys_flav, numberOfGridPoints)
 
-        # calculate the covariance 
+        # Calculate covariance matrix
         covarianceMatrix = np.cov(dataMatrix, rowvar=False)
 
+        # Plot covariance matrix
         plt.figure(figsize=(10, 8))
-        im = plt.imshow(covarianceMatrix, aspect='auto') #, vmin=vmin, vmax=vmax)  
-        plt.title("PDF Covariance Matrix (Flavour Basis) - Full np.cov", fontsize=12)
-
-        cbar = plt.colorbar(im)
-        cbar.set_label("Covariance", fontsize=12)
-
+        im_cov = plt.imshow(covarianceMatrix, aspect='auto')
+        plt.title("PDF Covariance Matrix - Full np.cov", fontsize=12)
+        cbar_cov = plt.colorbar(im_cov)
+        cbar_cov.set_label("Covariance", fontsize=12)
         plt.gca().invert_yaxis()
         plt.grid(False)
         plt.savefig('reconstructedMatrixFull.png')
+        plt.show()
+
+        # Calculate correlation matrix from covariance
+        std_devs = np.sqrt(np.diag(covarianceMatrix))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            inv_std = 1 / std_devs
+            D_inv = np.diag(inv_std)
+            correlationMatrix = D_inv @ covarianceMatrix @ D_inv
+
+        # Plot correlation matrix
+        plt.figure(figsize=(10, 8))
+        im_corr = plt.imshow(correlationMatrix, aspect='auto')
+        plt.title("PDF Correlation Matrix", fontsize=12)
+        cbar_corr = plt.colorbar(im_corr)
+        cbar_corr.set_label("Correlation", fontsize=12)
+        plt.gca().invert_yaxis()
+        plt.grid(False)
+        plt.savefig('correlationMatrixFull.png')
         plt.show()
 
 # ---------------------------------------------
@@ -725,14 +742,8 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
     if integralReconstructionFull:
         normalised_cov_kde, correlation_kde, normalised_covEmpirical, correlation_empirical = construct_covariance_matrix(keys_flav, res_flav, numberOfGridPoints)
 
-        vmin = min(normalised_cov_kde.min(), normalised_covEmpirical.min())
-        vmax = max(normalised_cov_kde.max(), normalised_covEmpirical.max())
-
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-
         plot_matrix_comparison(normalised_cov_kde,normalised_covEmpirical,"KDE Reconstructed Covariance","Empirical Covariance (reconstructed)", "Covariance", "reconstructedMatrix_Covariance.png")
         plot_matrix_comparison(correlation_kde, correlation_empirical, "KDE Reconstructed Correlation", "Empirical Correlation (reconstructed)", "Correlation", "reconstructedMatrix_Correlation.png")
-
 
 # ---------------------------------------------
 # --- Plot distributions in 1D

@@ -1,0 +1,12 @@
+Run Settings 
+
+keys_flav = ['u', 'd', 's', 'c']
+numberOfGridPoints = 10
+
+
+
+
+Importance sampling - sampling sizes
+
+n_bootstrap=100 # error calculations
+n_samplesMC=10000

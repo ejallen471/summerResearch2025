@@ -1,0 +1,24 @@
+Run Settings 
+
+keys_flav = ['u', 'd', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+numberOfGridPoints = 10
+
+Importance sampling - sampling sizes
+
+n_bootstrap=100 # error calculations
+n_samplesMC=10000
+
+
+Notes:
+
+For charm and charm bar, we get 
+
+[Loop 35 / 8100] idx1=0, idx2=0, flav1='c', flav2='cbar'
+/Users/ejallen/Desktop/MomentEstimationCode/momentEstimation_matrixReconstruction.py:457: RuntimeWarning: divide by zero encountered in divide
+  weightsLst = p_vals / q_vals  # shape (n_samplesMC,)
+/opt/anaconda3/lib/python3.12/site-packages/numpy/core/fromnumeric.py:88: RuntimeWarning: invalid value encountered in reduce
+  return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+/Users/ejallen/Desktop/MomentEstimationCode/momentEstimation_matrixReconstruction.py:473: RuntimeWarning: invalid value encountered in divide
+  secondMomentMatrix = weighted_outer_sum / weight_sum  # shape (d, d)
+
+Maybe corresponds to the white squares - the code will skip these loops 
