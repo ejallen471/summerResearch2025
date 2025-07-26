@@ -1,3 +1,9 @@
+#############################################################################
+
+# Construct the covariance and correlation matrices with parallelism (for speed)
+
+#############################################################################
+
 import pickle
 import warnings
 import numpy as np
@@ -592,7 +598,7 @@ def _single_covariance_task(idx1, idx2, flav1, flav2, flav_to_index, res_flav, n
 
     return (i_pos, j_pos, covMatrix, covMatrix_empirical)
 
-# --- construct the covariance matrix using parallel computing - speedier
+# --- construct the covariance and correlation matrix using 2x2 submatrices
 def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints, n_jobs=-1):
     n_flav = len(keys_flav)
     dim = n_flav * numberOfGridPoints
@@ -606,7 +612,7 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
              for flav1 in keys_flav
              for flav2 in keys_flav]
 
-    # Use tqdm to wrap the tasks iterator for a progress bar in the main thread
+    # Run in parallel
     results = Parallel(n_jobs=n_jobs, verbose=0)(
         delayed(_single_covariance_task)(idx1, idx2, flav1, flav2, flav_to_index, res_flav, numberOfGridPoints)
         for idx1, idx2, flav1, flav2 in tqdm(tasks, desc="Covariance Tasks", total=len(tasks))
@@ -614,56 +620,79 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
 
     # Initialise matrices
     cov_full = np.zeros((dim, dim))
-    count_matrix = np.zeros((dim, dim))
     cov_full_empirical = np.zeros((dim, dim))
+    corr_full = np.zeros((dim, dim))            
+    corr_full_empirical = np.zeros((dim, dim))  
+    count_matrix = np.zeros((dim, dim))
     count_matrix_empirical = np.zeros((dim, dim))
+
+    threshold = 1e-12  # for guarding variance
 
     # Accumulate results
     for res in results:
         if res is None:
             continue
-        
-        i_pos, j_pos, covMatrix, covMatrix_empirical = res
 
-        # update the bigger matrix with the KDE results
-        cov_full[i_pos, j_pos] += covMatrix[0, 1]
-        count_matrix[i_pos, j_pos] += 1
+        i, j, cov2x2, cov2x2_emp = res
 
-        cov_full[j_pos, i_pos] += covMatrix[1, 0]
-        count_matrix[j_pos, i_pos] += 1
+        # Extract variances and covariance
+        var_i_kde, var_j_kde = cov2x2[0, 0], cov2x2[1, 1]
+        cov_ij_kde = cov2x2[0, 1]
 
-        cov_full[i_pos, i_pos] += covMatrix[0, 0]
-        count_matrix[i_pos, i_pos] += 1
+        var_i_emp, var_j_emp = cov2x2_emp[0, 0], cov2x2_emp[1, 1]
+        cov_ij_emp = cov2x2_emp[0, 1]
 
-        cov_full[j_pos, j_pos] += covMatrix[1, 1]
-        count_matrix[j_pos, j_pos] += 1
+        std_i_kde = np.sqrt(var_i_kde) if var_i_kde > threshold else np.nan
+        std_j_kde = np.sqrt(var_j_kde) if var_j_kde > threshold else np.nan
 
-        # update the bigger matrix with the empirical results
-        cov_full_empirical[i_pos, j_pos] += covMatrix_empirical[0, 1]
-        count_matrix_empirical[i_pos, j_pos] += 1
+        std_i_emp = np.sqrt(var_i_emp) if var_i_emp > threshold else np.nan
+        std_j_emp = np.sqrt(var_j_emp) if var_j_emp > threshold else np.nan
 
-        cov_full_empirical[j_pos, i_pos] += covMatrix_empirical[1, 0]
-        count_matrix_empirical[j_pos, i_pos] += 1
+        denom_kde = std_i_kde * std_j_kde
+        denom_emp = std_i_emp * std_j_emp
 
-        cov_full_empirical[i_pos, i_pos] += covMatrix_empirical[0, 0]
-        count_matrix_empirical[i_pos, i_pos] += 1
+        # KDE
+        cov_full[i, j] += cov_ij_kde
+        cov_full[j, i] += cov_ij_kde
+        cov_full[i, i] += var_i_kde
+        cov_full[j, j] += var_j_kde
+        count_matrix[i, j] += 1
+        count_matrix[j, i] += 1
+        count_matrix[i, i] += 1
+        count_matrix[j, j] += 1
 
-        cov_full_empirical[j_pos, j_pos] += covMatrix_empirical[1, 1]
-        count_matrix_empirical[j_pos, j_pos] += 1
+        if not np.isnan(denom_kde) and denom_kde > 0:
+            corr_val_kde = cov_ij_kde / denom_kde
+            corr_full[i, j] += corr_val_kde
+            corr_full[j, i] += corr_val_kde
 
-    # Normalise
+        # Empirical
+        cov_full_empirical[i, j] += cov_ij_emp
+        cov_full_empirical[j, i] += cov_ij_emp
+        cov_full_empirical[i, i] += var_i_emp
+        cov_full_empirical[j, j] += var_j_emp
+        count_matrix_empirical[i, j] += 1
+        count_matrix_empirical[j, i] += 1
+        count_matrix_empirical[i, i] += 1
+        count_matrix_empirical[j, j] += 1
+
+        if not np.isnan(denom_emp) and denom_emp > 0:
+            corr_val_emp = cov_ij_emp / denom_emp
+            corr_full_empirical[i, j] += corr_val_emp
+            corr_full_empirical[j, i] += corr_val_emp
+
+    # Normalise all matrices
     with np.errstate(invalid='ignore', divide='ignore'):
         normalised_cov_kde = np.divide(cov_full, count_matrix, where=count_matrix > 0)
-        normalised_covEmpirical = np.divide(cov_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
+        normalised_cov_emp = np.divide(cov_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
+        normalised_corr_kde = np.divide(corr_full, count_matrix, where=count_matrix > 0)
+        normalised_corr_emp = np.divide(corr_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
+    
+    # Due to conditions above this the diagonal is not calculated - it is one for correlation, so putting in here (not calculating to save time)
+    np.fill_diagonal(normalised_corr_kde, 1.0)
+    np.fill_diagonal(normalised_corr_emp, 1.0)
 
-    D_inv_kde = np.diag(1 / np.sqrt(np.diag(normalised_cov_kde)))
-    D_inv_empirical = np.diag(1 / np.sqrt(np.diag(normalised_covEmpirical)))
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        correlation_kde = D_inv_kde @ normalised_cov_kde @ D_inv_kde
-        correlation_empirical = D_inv_empirical @ normalised_covEmpirical @ D_inv_empirical
-
-    return normalised_cov_kde, correlation_kde, normalised_covEmpirical, correlation_empirical
+    return normalised_cov_kde, normalised_corr_kde, normalised_cov_emp, normalised_corr_emp
 
 # ---------------------------------------------
 # --- Plot Matrix Code
@@ -697,6 +726,7 @@ def plot_matrix_comparison(matrix1, matrix2, title1, title2, cbar_label, save_fi
     plt.savefig(save_filename, bbox_inches='tight')
     plt.show()
 
+
 #############################################################################
 ### MAIN FUNCTION
 #############################################################################
@@ -706,7 +736,7 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
     keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     # keys_flav = ['d', 'u', 's', 'c']
-    numberOfGridPoints = 10  # number of indices to include for integralReconstructionFull and empiricalReconstruction options
+    numberOfGridPoints = 15  # number of indices to include for integralReconstructionFull and empiricalReconstruction options
     
 # ---------------------------------------------
 # --- Matrix reconstruction (Empricial)  
@@ -722,9 +752,9 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
         # Plot covariance matrix
         plt.figure(figsize=(10, 8))
         im_cov = plt.imshow(covarianceMatrix, aspect='auto')
-        plt.title("PDF Covariance Matrix - Full np.cov", fontsize=12)
+        # plt.title("PDF Covariance Matrix - Full np.cov", fontsize=12)
         cbar_cov = plt.colorbar(im_cov)
-        cbar_cov.set_label("Covariance", fontsize=12)
+        cbar_cov.set_label("Covariance")
         plt.gca().invert_yaxis()
         plt.grid(False)
         plt.savefig('reconstructedMatrixFull.png')
@@ -740,9 +770,9 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
         # Plot correlation matrix
         plt.figure(figsize=(10, 8))
         im_corr = plt.imshow(correlationMatrix, aspect='auto')
-        plt.title("PDF Correlation Matrix", fontsize=12)
+        # plt.title("PDF Correlation Matrix", fontsize=12)
         cbar_corr = plt.colorbar(im_corr)
-        cbar_corr.set_label("Correlation", fontsize=12)
+        cbar_corr.set_label("Correlation")
         plt.gca().invert_yaxis()
         plt.grid(False)
         plt.savefig('correlationMatrixFull.png')
@@ -757,6 +787,7 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
 
         plot_matrix_comparison(normalised_cov_kde,normalised_covEmpirical,"KDE Reconstructed Covariance","Empirical Covariance (reconstructed)", "Covariance", "reconstructedMatrix_Covariance.png")
         plot_matrix_comparison(correlation_kde, correlation_empirical, "KDE Reconstructed Correlation", "Empirical Correlation (reconstructed)", "Correlation", "reconstructedMatrix_Correlation.png")
+        np.savetxt("correlation_kde.csv", correlation_kde, delimiter=",", fmt="%.6e")
 
 
 # ---------------------------------------------

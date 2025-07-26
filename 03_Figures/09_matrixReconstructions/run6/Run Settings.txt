@@ -9,3 +9,6 @@ n_bootstrap=100 # error calculations
 n_samplesMC=10000
 
 
+(In the correlation matrix, the diagonals are zero, because this is skipped for the covariance)
+ 
+Run again to correct this
