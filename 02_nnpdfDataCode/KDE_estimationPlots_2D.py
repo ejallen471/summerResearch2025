@@ -188,12 +188,12 @@ def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points):
     plot_data = data if data.shape[0] <= 10000 else data[::10]
 
     plt.scatter(plot_data[:, 0], plot_data[:, 1], c='dimgrey', s=10, alpha=0.3, label='Samples')
-    plt.contour(X, Y, kde_vals, colors='navy', linewidths=1.5)
-    plt.contour(X, Y, pdf_vals, colors='firebrick', linestyles='dashed', linewidths=1.5)
+    plt.contour(X, Y, pdf_vals, colors='navy', linewidths=1.5)
+    plt.contour(X, Y, kde_vals, colors='firebrick', linestyles='dashed', linewidths=1.5)
 
     legend_elements = [
-        Line2D([0], [0], color='navy', lw=1.5, label='KDE Estimate pdf'),
-        Line2D([0], [0], color='firebrick', lw=1.5, linestyle='dashed', label='Empirical pdf'),
+        Line2D([0], [0], color='navy', lw=1.5, label='Empirical PDF'),
+        Line2D([0], [0], color='firebrick', lw=1.5, linestyle='dashed', label='KDE Estimate PDF'),
         Line2D([0], [0], marker='o', color='w', markerfacecolor='k', markersize=6, label='Samples', alpha=0.5)
     ]
 

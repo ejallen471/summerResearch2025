@@ -67,7 +67,7 @@ def prepare_data(res, keys, indices=None):
 ### BUILDING KDE STUFF
 #############################################################################
 
-# --- calculate the bandwidth matrix - diagonal, ignore covariance, much quicker
+# --- calculate the bandwidth matrix - diagonal, ignore covariance, much quicker - NOT USED
 def calc_bandwidthMatrix(data, n=100000):
     
     # Calculate Silverman bandwidth vector
@@ -242,7 +242,7 @@ def calc_pdf_and_kde_values(data, bandwidthMatrix, dim):
     # Generate x values for plotting KDE and PDF
     x_vals = np.linspace(np.min(data_1d), np.max(data_1d), 500)
 
-    # Empirical PDF assuming Gaussian distribution
+    # Empirical PDF - assuming Gaussian distribution with sample mean and std
     pdf_vals = norm.pdf(x_vals, loc=mean_x, scale=std_x)
 
     # calculate KDE values

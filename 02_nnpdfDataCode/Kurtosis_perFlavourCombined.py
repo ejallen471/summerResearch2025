@@ -4,6 +4,7 @@ from pathlib import Path
 from sklearn.model_selection import KFold
 from matplotlib import pyplot as plt
 from scipy import stats
+from matplotlib.patches import Patch
 
 # If running on separate laptop/computer, this will need commenting out 
 plt.style.use('pythonStyle')
@@ -279,6 +280,7 @@ def calc_bootstrap_error_mc_importance(data, bandwidth, n_bootstrap, n_samplesBo
 
     return std_zeroth, std_mean, std_variance, std_kurtosis
 
+# --- Calculate bootstrap errors for the empirical moments
 def bootstrap_moment_errors(data, n_bootstrap=1000, seed=None):
     """
     Compute bootstrap standard errors for mean, variance, and kurtosis.
@@ -322,12 +324,12 @@ def bootstrap_moment_errors(data, n_bootstrap=1000, seed=None):
 def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesMC=10000):
     
     # --- KDE Integration - calc moments 
-    zerothMoment, firstMomentVec, varianceVec, kurtosisVec = calc_moments_importanceSampling(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
-    error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_kurtosis_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
+    # zerothMoment, firstMomentVec, varianceVec, kurtosisVec = calc_moments_importanceSampling(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
+    # error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_kurtosis_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
 
     # --- Empirical moments - calc moments
-    # empirical_mean, empirical_variance, empirical_kurtosis = calc_empiricalMoments(data)
-    # bootstrapError_mean, bootstrapError_variance, bootstrap_kurtosis =  bootstrap_moment_errors(data)
+    empirical_mean, empirical_variance, empirical_kurtosis = calc_empiricalMoments(data)
+    bootstrapError_mean, bootstrapError_variance, bootstrap_kurtosis =  bootstrap_moment_errors(data)
 
     # print("\n--- Moments ---")
     # print(f"Zeroth (KDE): {zerothMoment} with error {error_zeroth_is}\n")
@@ -340,9 +342,11 @@ def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesM
 
     # print(f"Excess kurtosis (KDE): {kurtosisVec} with error {bootstrap_kurtosis_is}\n")
     # print(f"Excess kurtosis  (Empirical): {empirical_kurtosis} with error {bootstrap_kurtosis}\n")
+    kurtosisVec = 0
+    bootstrap_kurtosis_is = 0
 
 
-    return kurtosisVec, bootstrap_kurtosis_is 
+    return kurtosisVec, bootstrap_kurtosis_is, empirical_kurtosis.item(), bootstrap_kurtosis.item()
 
 #############################################################################
 ### MAIN FUNCTION
@@ -353,41 +357,65 @@ def main():
     res_flav, res_ev = read_in_data()
 
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
-    indices = 50  
+    latex_labels = {
+        'd': r'$d$', 'u': r'$u$', 's': r'$s$', 'c': r'$c$', 'g': r'$g$',
+        'dbar': r'$\bar{d}$', 'ubar': r'$\bar{u}$', 'sbar': r'$\bar{s}$', 'cbar': r'$\bar{c}$'
+    }
 
+    indices = 50
     plt.figure(figsize=(10, 6))
-    colors = plt.cm.get_cmap('tab10', len(keys_flav))
+    colormap = plt.cm.get_cmap('tab10', len(keys_flav))
+    color_map = {key: colormap(i) for i, key in enumerate(keys_flav)}
 
-    # Initialise dictionary to hold results per flavour
-    kurtosis_by_flavour = {}
-    error_by_flavour = {}
+    kurtosis_by_flavour_kde = {}
+    error_by_flavour_kde = {}
+    kurtosis_by_flavour_empirical = {}
+    error_by_flavour_empirical = {}
 
     for i, key in enumerate(keys_flav):
         print(f'*** --- Flavour {key} --- ***')
-        excessKurtosisLst = []
-        excessKurtosisErrorLst = []
+        excessKurtosisLst_kde = []
+        excessKurtosisErrorLst_kde = []
+        excessKurtosisLst_empirical = []
+        excessKurtosisErrorLst_empirical = []
 
         for index in range(indices):
             print(f'{index + 1} / {indices}', end='\r')
             data = prepare_data(res_flav, [key], index)
             bandwidthValue = calc_bandwidth_1d(data)
-            kurtosis, kurtosis_error = run_1D_momentCalculations(data, bandwidthValue)
+            kde_kurtosis, kde_kurtosis_error, empirical_kurtosis, empirical_kurtosis_error = run_1D_momentCalculations(data, bandwidthValue)
 
-            excessKurtosisLst.append(kurtosis)
-            excessKurtosisErrorLst.append(kurtosis_error)
+            excessKurtosisLst_kde.append(kde_kurtosis)
+            excessKurtosisErrorLst_kde.append(kde_kurtosis_error)
+            excessKurtosisLst_empirical.append(empirical_kurtosis)
+            excessKurtosisErrorLst_empirical.append(empirical_kurtosis_error)
 
-        kurtosis_by_flavour[key] = np.array(excessKurtosisLst)
-        error_by_flavour[key] = np.array(excessKurtosisErrorLst)
+        kurtosis_by_flavour_kde[key] = np.array(excessKurtosisLst_kde)
+        error_by_flavour_kde[key] = np.array(excessKurtosisErrorLst_kde)
+        kurtosis_by_flavour_empirical[key] = np.array(excessKurtosisLst_empirical)
+        error_by_flavour_empirical[key] = np.array(excessKurtosisErrorLst_empirical)
 
-        plt.errorbar(np.arange(indices), kurtosis_by_flavour[key], yerr=error_by_flavour[key], fmt='o-', capthick=3, capsize=3, markersize=2, label=key, color=colors(i))
+        # Plotting empirical results (change to KDE if needed)
+        plt.errorbar(
+            np.arange(indices),
+            kurtosis_by_flavour_empirical[key],
+            yerr=error_by_flavour_empirical[key],
+            fmt='o-', capthick=3, capsize=3, markersize=2,
+            color=color_map[key]
+        )
+
+    # Construct legend with LaTeX and matching colors
+    handles = [Patch(facecolor=color_map[k], label=latex_labels[k]) for k in keys_flav]
+    plt.legend(handles=handles, title="Flavour", loc='upper left', frameon=True, framealpha=1)
 
     plt.xlabel("Grid Point Index")
     plt.ylabel("Excess Kurtosis")
-    plt.legend(title="Flavour", loc='upper left')
+    plt.ylim(-3, 25)
     plt.grid(True)
     plt.tight_layout()
     plt.savefig('excessKurtosisCombined')
     plt.show()
+
 
 if __name__ == "__main__":
     main()

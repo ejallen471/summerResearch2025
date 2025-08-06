@@ -319,12 +319,12 @@ def bootstrap_moment_errors(data, n_bootstrap=1000, seed=None):
 def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesMC=10000):
     
     # --- KDE Integration - calc moments 
-    zerothMoment, firstMomentVec, varianceVec, kurtosisVec = calc_moments_importanceSampling(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
-    error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_kurtosis_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
+    # zerothMoment, firstMomentVec, varianceVec, kurtosisVec = calc_moments_importanceSampling(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
+    # error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_kurtosis_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
 
     # --- Empirical moments - calc moments
-    # empirical_mean, empirical_variance, empirical_kurtosis = calc_empiricalMoments(data)
-    # bootstrapError_mean, bootstrapError_variance, bootstrap_kurtosis =  bootstrap_moment_errors(data)
+    empirical_mean, empirical_variance, empirical_kurtosis = calc_empiricalMoments(data)
+    bootstrapError_mean, bootstrapError_variance, bootstrap_kurtosis =  bootstrap_moment_errors(data)
 
     # print("\n--- Moments ---")
     # print(f"Zeroth (KDE): {zerothMoment} with error {error_zeroth_is}\n")
@@ -339,7 +339,7 @@ def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesM
     # print(f"Excess kurtosis  (Empirical): {empirical_kurtosis} with error {bootstrap_kurtosis}\n")
 
 
-    return kurtosisVec, bootstrap_kurtosis_is 
+    return empirical_kurtosis.item(), bootstrap_kurtosis.item()
 
 #############################################################################
 ### MAIN FUNCTION

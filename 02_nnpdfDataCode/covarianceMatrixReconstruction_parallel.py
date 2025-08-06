@@ -84,69 +84,61 @@ def prepare_data_rangeIndices(res, keys, indices=None):
 ### BUILDING KDE STUFF
 #############################################################################
 
-# --- calculate the bandwidth matrix - diagonal, ignore covariance, much quicker - NOT USED
-def calc_bandwidthMatrix(data, n=10000):
-    
-    # Calculate Silverman bandwidth vector
-    n, d = data.shape
-    sigma = np.std(data, axis=0, ddof=1)
-    h_p = (4 / (d + 2)) ** (1 / (d + 4)) * n ** (-1 / (d + 4)) * sigma
-    print(f'Initial h_p: {h_p}')
-
-    # Create candidate bandwidth matrices
-    scaling_factors = np.linspace(0.5, 2.0, 10)
-
-    H_Matrix_candidateLst = []
-    hLst = []
-    for s in scaling_factors:
-        H_diag = (s * h_p) ** 2 
-        H_matrix = np.diag(H_diag)
-        H_Matrix_candidateLst.append(H_matrix)
-        hLst.append(H_diag)
-
-    # Cross-validation
-    bandwidthMatrix, _ = calc_kdeCrossValidation_nD(data, H_Matrix_candidateLst, k=5, subsample_size=10000)
-
-    return bandwidthMatrix
-
 # --- Helper function for estimate_bandwidth_matrix_scv
 def scv_objective(params, data):
     n, d = data.shape
 
     # Build lower-triangular matrix L from params
-    lowerTriangularMatrix = np.zeros((d, d))
+    L = np.zeros((d, d))
     tril_indices = np.tril_indices(d)
-    lowerTriangularMatrix[tril_indices] = params
+    L[tril_indices] = params
 
-    # Bandwidth matrix H = L L^T + epsilon * I
-    choleskyMatrix = lowerTriangularMatrix @ lowerTriangularMatrix.T
+    # Bandwidth matrix H = L L^T
+    H = L @ L.T
 
+    # Check matrix validity and invertibility
     try:
-        H_inv = np.linalg.inv(choleskyMatrix)
-        det_H = np.linalg.det(choleskyMatrix)
+        H_inv = np.linalg.inv(H)
+        det_H = np.linalg.det(H)
+        if det_H <= 0 or not np.isfinite(det_H):
+            return np.inf  # Invalid matrix, penalize
     except np.linalg.LinAlgError:
-        return None
+        return np.inf  # Singular matrix, penalize
 
     norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * np.sqrt(det_H))
 
-    diffs = data[:, np.newaxis, :] - data[np.newaxis, :, :]  # (n, n, d)
+    # Calculate pairwise differences: shape (n, n, d)
+    diffs = data[:, np.newaxis, :] - data[np.newaxis, :, :]
 
-    dists = np.einsum('ijk,kl,ijl->ij', diffs, H_inv, diffs)
+    # Compute squared Mahalanobis distances for all pairs
+    try:
+        dists = np.einsum('ijk,kl,ijl->ij', diffs, H_inv, diffs)
+    except Exception:
+        return np.inf
 
+    # Prevent self-kernel terms (distance zero)
     np.fill_diagonal(dists, np.inf)
 
+    # Compute kernel values
     kernels = np.exp(-0.5 * dists)
 
-    estimate = norm_const * np.mean(kernels, axis=1)  # (n,)
+    # KDE estimate for each data point (mean over kernels)
+    estimate = norm_const * np.mean(kernels, axis=1)
 
-    # Suppress divide by zero warnings for log(estimate)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
+    # Clip estimate to avoid log(0)
+    estimate = np.clip(estimate, 1e-300, None)
+
+    # Compute negative log-likelihood score
+    try:
         score = -np.mean(np.log(estimate))
+        if not np.isfinite(score):
+            return np.inf
+    except Exception:
+        return np.inf
 
     return score
 
-# --- calculate the bandwidth matrix with the covariance terms
+
 def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
     n, d = data.shape
 
@@ -154,25 +146,27 @@ def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
     np.fill_diagonal(initialCholeskyMatrix, initial_scale * np.std(data, axis=0))
     initial_params = initialCholeskyMatrix[np.tril_indices(d)]
 
-    # Suppress runtime warnings during minimise
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        result = minimize(scv_objective, initial_params, args=(data,), method='L-BFGS-B', options={'maxiter': 500})
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            result = minimize(scv_objective, initial_params, args=(data,), method='L-BFGS-B', options={'maxiter': 500})
+    except Exception:
+        result = None
 
-    if not result.success:
+    if not result.success or result.fun is None or not np.isfinite(result.fun):
         return None
 
     L_opt = np.zeros((d, d))
     L_opt[np.tril_indices(d)] = result.x
     H_opt = L_opt @ L_opt.T
 
-    # Final checks
     if not np.all(np.isfinite(H_opt)):
         return None
     if np.any(np.diag(H_opt) <= 0):
         return None
 
     return H_opt
+
 
 #############################################################################
 
@@ -308,38 +302,6 @@ def plot_1D_histogram_withScatter(data, x_vals, pdf_vals, kde_vals, dim, bins=50
 #############################################################################
 ### MOMENTS CALCULATION STUFF
 #############################################################################
-
-# ---------------------------------------------
-# --- Grid Evaulation Moment Integration 
-# ---------------------------------------------
-
-# --- generate grid for integration - NOT USED
-def generate_nd_grid(data, num_points_per_dim=20):
-    """
-    Generates an n-dimensional grid covering the range of the data.
-
-    Parameters:
-        data: (n_samples, d) array
-        num_points_per_dim: number of grid points per dimension
-
-    Returns:
-        grid_points: (total_points, d) array of grid points
-        mesh: list of n-dimensional meshgrid arrays (X, Y, Z, etc.)
-    """
-    d = data.shape[1]
-    grid_axes = []
-
-    for dim in range(d):
-        min_val = np.min(data[:, dim])
-        max_val = np.max(data[:, dim])
-        axis = np.linspace(min_val, max_val, num_points_per_dim)
-        grid_axes.append(axis)
-
-    mesh = np.meshgrid(*grid_axes, indexing='ij')
-    grid_points = np.vstack([m.ravel() for m in mesh]).T
-    mesh_shape = mesh[0].shape
-
-    return grid_points, mesh, mesh_shape
 
 # ---------------------------------------------
 # --- KDE PDF Evaluation Function 
@@ -617,6 +579,8 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
         delayed(_single_covariance_task)(idx1, idx2, flav1, flav2, flav_to_index, res_flav, numberOfGridPoints)
         for idx1, idx2, flav1, flav2 in tqdm(tasks, desc="Covariance Tasks", total=len(tasks))
     )
+    results = [res for res in results if res is not None]
+
 
     # Initialise matrices
     cov_full = np.zeros((dim, dim))
@@ -630,8 +594,6 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
 
     # Accumulate results
     for res in results:
-        if res is None:
-            continue
 
         i, j, cov2x2, cov2x2_emp = res
 
@@ -735,9 +697,9 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
     res_flav, res_ev = read_in_data()
     keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
-    # keys_flav = ['d', 'u', 's', 'c']
-    numberOfGridPoints = 15  # number of indices to include for integralReconstructionFull and empiricalReconstruction options
-    
+    # keys_flav = ['d', 'c']
+    numberOfGridPoints = 45  
+
 # ---------------------------------------------
 # --- Matrix reconstruction (Empricial)  
 # ---------------------------------------------
@@ -785,9 +747,13 @@ def main(plotting1D=False, empiricalReconstruction=True, integralReconstructionF
     if integralReconstructionFull:
         normalised_cov_kde, correlation_kde, normalised_covEmpirical, correlation_empirical = construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints=numberOfGridPoints, n_jobs=-1)
 
-        plot_matrix_comparison(normalised_cov_kde,normalised_covEmpirical,"KDE Reconstructed Covariance","Empirical Covariance (reconstructed)", "Covariance", "reconstructedMatrix_Covariance.png")
-        plot_matrix_comparison(correlation_kde, correlation_empirical, "KDE Reconstructed Correlation", "Empirical Correlation (reconstructed)", "Correlation", "reconstructedMatrix_Correlation.png")
+        # plot_matrix_comparison(normalised_cov_kde,normalised_covEmpirical,"KDE Reconstructed Covariance","Empirical Covariance (reconstructed)", "Covariance", "reconstructedMatrix_Covariance.png")
+        # plot_matrix_comparison(correlation_kde, correlation_empirical, "KDE Reconstructed Correlation", "Empirical Correlation (reconstructed)", "Correlation", "reconstructedMatrix_Correlation.png")
         np.savetxt("correlation_kde.csv", correlation_kde, delimiter=",", fmt="%.6e")
+        np.savetxt("covariance_kde.csv", normalised_cov_kde, delimiter=",", fmt="%.6e")
+        np.savetxt("correlation_empirical.csv", normalised_covEmpirical, delimiter=",", fmt="%.6e")
+        np.savetxt("correlation_empirical.csv", correlation_empirical, delimiter=",", fmt="%.6e")
+
 
 
 # ---------------------------------------------
