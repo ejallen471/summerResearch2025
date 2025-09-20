@@ -1,3 +1,10 @@
+#############################################################################
+
+# File will plot grid index against excess kurtosis with error bars (bootstrap)
+# One graph is produced for all flavours and saved into current folder
+
+#############################################################################
+
 import pickle
 import numpy as np
 from pathlib import Path
@@ -10,13 +17,12 @@ from matplotlib.patches import Patch
 plt.style.use('pythonStyle')
 import pythonStyle as ed
 
-np.random.seed(4)
-
 #############################################################################
 #############################################################################
 
 # --- Load serialised data
 def read_in_data():
+    # change path to data here
     paths = [Path("./flavour_basis.pkl"), Path("./evolution_basis.pkl")]
     return (pickle.load(open(p, 'rb')) for p in paths)
 
@@ -356,13 +362,16 @@ def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesM
 def main():
     res_flav, res_ev = read_in_data()
 
+    # change flavours included here
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+    indices = 50
+    
     latex_labels = {
         'd': r'$d$', 'u': r'$u$', 's': r'$s$', 'c': r'$c$', 'g': r'$g$',
         'dbar': r'$\bar{d}$', 'ubar': r'$\bar{u}$', 'sbar': r'$\bar{s}$', 'cbar': r'$\bar{c}$'
     }
 
-    indices = 50
+    
     plt.figure(figsize=(10, 6))
     colormap = plt.cm.get_cmap('tab10', len(keys_flav))
     color_map = {key: colormap(i) for i, key in enumerate(keys_flav)}

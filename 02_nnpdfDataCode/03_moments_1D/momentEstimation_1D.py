@@ -1,3 +1,11 @@
+
+#############################################################################
+
+# Calculate the first four standardised moments using 1D KDE and empirical methods
+# with bootstrap error and KL divergence
+
+#############################################################################
+
 import pickle
 import numpy as np
 from pathlib import Path
@@ -67,7 +75,7 @@ def prepare_data(res, keys, indices=None):
 ### BUILDING KDE STUFF
 #############################################################################
 
-# --- calculate the bandwidth matrix - diagonal, ignore covariance, much quicker - NOT USED
+# --- calculate the bandwidth matrix - diagonal, ignore covariance, much quicker
 def calc_bandwidthMatrix(data, n=100000):
     
     # Calculate Silverman bandwidth vector
@@ -242,7 +250,7 @@ def calc_pdf_and_kde_values(data, bandwidthMatrix, dim):
     # Generate x values for plotting KDE and PDF
     x_vals = np.linspace(np.min(data_1d), np.max(data_1d), 500)
 
-    # Empirical PDF - assuming Gaussian distribution with sample mean and std
+    # Empirical PDF assuming Gaussian distribution
     pdf_vals = norm.pdf(x_vals, loc=mean_x, scale=std_x)
 
     # calculate KDE values
@@ -253,32 +261,22 @@ def calc_pdf_and_kde_values(data, bandwidthMatrix, dim):
 
     return x_vals, pdf_vals, kde_vals
 
+# --- Calculate KL divergence in 1D - between two choosen flavours
 def calc_KLDivergence(data, kde_vals_x, kde_vals_y, pdf_x, pdf_y):
-    # Assume uniform spacing in x and y
+
+    # Assume uniform spacing
     x_vals = np.linspace(np.min(data[:, 0]), np.max(data[:, 0]), len(kde_vals_x))
     y_vals = np.linspace(np.min(data[:, 1]), np.max(data[:, 1]), len(kde_vals_y))
     dx = x_vals[1] - x_vals[0]
     dy = y_vals[1] - y_vals[0]
 
-    # Clip to avoid log(0) or division by zero
-    kde_vals_x = np.clip(kde_vals_x, 1e-300, None)
-    pdf_x = np.clip(pdf_x, 1e-300, None)
-    kde_vals_y = np.clip(kde_vals_y, 1e-300, None)
-    pdf_y = np.clip(pdf_y, 1e-300, None)
+    # KL divergence: KDE vs True
+    kl_x = np.sum(kde_vals_x * np.log(kde_vals_x / pdf_x)) * dx
+    kl_y = np.sum(kde_vals_y * np.log(kde_vals_y / pdf_y)) * dy
 
-    # Normalise
-    kde_vals_x /= np.sum(kde_vals_x) * dx
-    pdf_x /= np.sum(pdf_x) * dx
-    kde_vals_y /= np.sum(kde_vals_y) * dy
-    pdf_y /= np.sum(pdf_y) * dy
-
-    # Compute KL divergence: D_KL(true || kde)
-    kl_x = np.sum(pdf_x * np.log(pdf_x / kde_vals_x)) * dx
-    kl_y = np.sum(pdf_y * np.log(pdf_y / kde_vals_y)) * dy
-
+    # print stuff
     print(f"\nKL divergence (X marginal): {kl_x:.6f}")
     print(f"KL divergence (Y marginal): {kl_y:.6f}\n")
-
 
 # --- Plot histogram
 def plot_1D_histogram(data, x_vals, pdf_vals, kde_vals, dim, bins=50):
@@ -288,12 +286,12 @@ def plot_1D_histogram(data, x_vals, pdf_vals, kde_vals, dim, bins=50):
     # Plot histogram, empirical PDF, and KDE estimate
     plt.figure(figsize=(8, 5))
     plt.hist(data_1d, bins=bins, density=True, color='#68A5A1', edgecolor='black', alpha=0.6)
-    plt.plot(x_vals, kde_vals, '--', lw=2, label="KDE Estimate PDF")
     plt.plot(x_vals, pdf_vals, lw=2, label="Empirical PDF")
-    # plt.xlabel(f"Gluon PDF")
-    plt.ylabel("Probability Density")
-    # plt.title("1D Histogram with Empirical PDF and KDE Estimate", fontsize=14)
-    plt.legend()
+    plt.plot(x_vals, kde_vals, '--', lw=2, label="KDE Estimate PDF")
+    plt.xlabel(f"Dimension {dim}", fontsize=14)
+    plt.ylabel("Density", fontsize=14)
+    plt.title("1D Histogram with Empirical PDF and KDE Estimate", fontsize=14)
+    plt.legend(fontsize=12)
     plt.show()
 
 # --- Plot histogram with scatter graph as well
@@ -339,6 +337,165 @@ def plot_1D_histogram_withScatter(data, x_vals, pdf_vals, kde_vals, dim, bins=50
     plt.tight_layout()
     plt.show()
 
+
+#############################################################################
+### MOMENTS CALCULATION STUFF
+#############################################################################
+
+# ---------------------------------------------
+# --- KDE PDF Evaluation Function 1D ---
+# ---------------------------------------------
+
+def calc_pdf_pointwise_1D(x, data, h):
+
+    n = data.shape[0]
+    diffs = x - data[:, 0]  # shape (n,)
+
+    # Gaussian kernel evaluations
+    normConst = 1 / np.sqrt(2 * np.pi * h)
+    kernel_vals = normConst * np.exp(-0.5 * ((diffs)** 2) / h)
+
+    # KDE estimate is average kernel values
+    pdf_val = np.sum(kernel_vals) / n
+
+    return pdf_val
+
+# ---------------------------------------------
+# --- Grid Evaulation Moment Integration ---
+# ---------------------------------------------
+
+# --- calculate the integral via grid evaulation
+def calc_moment_integral_GridEvaluation_1d(data, bandwidth, order, grid, differentialElement):
+    """
+    Calculate moment integrals of KDE in 1D by grid evaluation.
+
+    data: (n,) 1D data array
+    bandwidth: scalar bandwidth variance (h)
+    order: integer moment order (0 for zeroth moment, 1 for first, etc.)
+    grid: 1D array of points at which to evaluate KDE
+    differentialElement: scalar representing the grid spacing (dx)
+    """
+
+    # Evaluate KDE at grid points
+    f_hats = np.empty_like(grid)
+    for i, pt in enumerate(grid):
+        f_hats[i] = calc_pdf_pointwise_1D(pt, data[:, None], bandwidth)
+    
+    if order == 0:
+        # Zeroth moment: integral over KDE (scalar)
+        return np.sum(f_hats) * differentialElement
+    else:
+        # Higher moments: integral of x^order * KDE(x)
+        moment = np.sum((grid ** order) * f_hats) * differentialElement
+        return moment
+
+# ---------------------------------------------
+# --- Empirical Moment Stat Functions ---
+# ---------------------------------------------
+
+# --- pass through function for calc_bootstrap_error
+def mean_stat(data_sample):
+    return np.mean(data_sample, axis=0)
+
+# --- pass through function for calc_bootstrap_error
+def variance_stat(data_sample):
+    return np.var(data_sample, axis=0, ddof=1)
+
+# ---------------------------------------------
+# --- Bootstrap Error ---
+# ---------------------------------------------
+
+# --- calculate the error from empirical moments
+def calc_bootstrap_error(data, stat_func, n_bootstrap):
+    n = data.shape[0]
+    indices = np.random.choice(n, size=(n_bootstrap, n), replace=True)
+    samples = data[indices]
+    stats = np.array([stat_func(sample) for sample in samples])
+    
+    # stats shape: (n_bootstrap,) if stat_func returns scalar
+    # std with ddof=1 to get unbiased estimator
+    error = np.std(stats, ddof=1)
+    
+    return error
+
+# --- calculate the error from integral based moments
+def calc_bootstrap_error_integral(data, bandwidth, grid, differentialElement, n_bootstrap=100):
+
+    n = len(data)
+    zeorth_estimates = np.empty(n_bootstrap)
+    mean_estimates = np.empty(n_bootstrap)
+    var_estimates = np.empty(n_bootstrap)
+    
+    for i in range(n_bootstrap):
+        # Bootstrap resample with replacement
+        resample = np.random.choice(data, size=n, replace=True)
+        
+        M0 = calc_moment_integral_GridEvaluation_1d(resample, bandwidth, 1, grid, differentialElement)
+        M1 = calc_moment_integral_GridEvaluation_1d(resample, bandwidth, 1, grid, differentialElement)
+        M2 = calc_moment_integral_GridEvaluation_1d(resample, bandwidth, 2, grid, differentialElement)
+
+        var = M2 - M1**2
+        var_estimates[i] = var
+        mean_estimates[i] = M1
+        zeorth_estimates[i] = M0
+    
+    # Bootstrap standard error is std deviation of bootstrap moment estimates
+    zeorth_std = np.std(zeorth_estimates, ddof=1)
+    mean_std = np.std(mean_estimates, ddof=1)
+    var_std = np.std(var_estimates, ddof=1)
+
+    return zeorth_std, mean_std, var_std
+
+# ---------------------------------------------
+# --- Main Moments Function
+# ---------------------------------------------
+
+# --- calling functions and bringing everything together
+def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=50, n_samplesBootStrap=10000):
+
+    n_dims = data.shape[1]
+    for dim in range(n_dims):
+        print(f"\n--- Dimension {dim + 1} ---")
+
+        data_min = np.min(data[:,dim])
+        data_max = np.max(data[:,dim])
+        data_std = np.std(data[:,dim])
+
+        grid_min = data_min - 3 * data_std
+        grid_max = data_max + 3 * data_std
+
+        grid = np.linspace(grid_min, grid_max, 1000)
+        dx = grid[1] - grid[0]
+        bandwidth = bandwidthMatrix[dim][dim]
+
+        # Zeroth moment
+        M0 = calc_moment_integral_GridEvaluation_1d(data[:,dim], bandwidth, 0, grid, dx)
+        M1 = calc_moment_integral_GridEvaluation_1d(data[:,dim], bandwidth, 1, grid, dx)
+        M2 = calc_moment_integral_GridEvaluation_1d(data[:,dim], bandwidth, 2, grid, dx)
+       
+        # Calculate variance
+        variance = M2 - M1**2
+        
+        # Empirical moments
+        empirical_mean = np.mean(data[:,dim])
+        empirical_variance = np.var(data[:,dim], ddof=1)
+
+        # Empirical bootstrap errors 
+        bootstrapError_mean = calc_bootstrap_error(data, mean_stat, n_bootstrap)
+        bootstrapError_variance = calc_bootstrap_error(data, variance_stat, n_bootstrap)
+
+        # Integral bootstrap errors 
+        bootstrapError_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is = calc_bootstrap_error_integral(data[:,dim], bandwidth, grid, differentialElement=dx)
+
+        print("\n--- Moments ---")
+        print(f"Zeroth (KDE): {M0} with error {bootstrapError_zeroth_is}\n")
+
+        print(f"Mean (KDE): {M1} with error {bootstrapError_mean_is}")
+        print(f"Mean (Empirical): {empirical_mean} with error {bootstrapError_mean}\n")
+
+        print(f"Variance (KDE): {variance} with error {bootstrapError_variance_is}")
+        print(f"Variance (Empirical): {empirical_variance} with error {bootstrapError_variance}\n")
+    
 #############################################################################
 ### MAIN FUNCTION
 #############################################################################
@@ -347,14 +504,14 @@ def main(plotting1D=True, KL_divergence=True):
     res_flav, res_ev = read_in_data()
     keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+    
+    # Choose flavours and index here
     keys_flav = ['d', 'g']
-
     index = 28
 
     data = prepare_data(res_flav, keys_flav, index)
     bandwidthMatrix = calc_bandwidthMatrix(data)
     # bandwidthMatrix = estimate_bandwidth_matrix_scv(data)
-
 
     # --- Plot in 1D
     d = data.shape[1]
@@ -369,8 +526,11 @@ def main(plotting1D=True, KL_divergence=True):
     KL_idx = (0,1) # which distributions is the KL divergence calculated between 
     if KL_divergence == True:
         _, pdf_vals_x, kde_vals_x = calc_pdf_and_kde_values(data, bandwidthMatrix, dim=KL_idx[0])
-        _, pdf_vals_y, kde_vals_y = calc_pdf_and_kde_values(data, bandwidthMatrix, dim=KL_idx[1])
+        _, pdf_vals_y, kde_vals_y = calc_pdf_and_kde_values(data, bandwidthMatrix, dim=KL_idx[0])
         calc_KLDivergence(data, kde_vals_x, kde_vals_y, pdf_vals_x, pdf_vals_y)
+
+    run_1D_momentCalculations(data, bandwidthMatrix)
+
 
 if __name__ == "__main__":
     main()

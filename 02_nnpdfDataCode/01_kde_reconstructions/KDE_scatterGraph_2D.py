@@ -1,3 +1,10 @@
+#############################################################################
+
+# Program will plot a scatter graph with the empirical PDF and KDE PDF superimposed 
+# Choose two flavours and one grid index
+
+#############################################################################
+
 import pickle
 import numpy as np
 from pathlib import Path
@@ -157,48 +164,6 @@ def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
     
 #############################################################################
 
-# --- Cross-validation of KDE bandwidth matrix- using subsampling for speed - NOT USED
-def calc_kdeCrossValidation_nD(data, H_Matrix_candidateLst, k=5, subsample_size=10000):
-    n, d = data.shape
-    kf = KFold(n_splits=k, shuffle=True, random_state=42)  # shuffle the data before splitting into k groups
-    mean_logLikelihoodLst = []
-
-    # Use subsampling to reduce computation
-    if n > subsample_size:
-        indices = np.random.choice(n, subsample_size, replace=False)
-        data_sub = data[indices]
-    else:
-        data_sub = data
-
-    for H in H_Matrix_candidateLst:
-        H = np.array(H)
-        H_inv = np.linalg.inv(H)
-        det_H = np.linalg.det(H)
-
-        norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * np.sqrt(det_H))
-
-        fold_log_likelihoods = []
-
-        for train_idx, val_idx in kf.split(data_sub):
-            X_train = data_sub[train_idx]
-            X_val = data_sub[val_idx]
-
-            diffs = X_val[:, np.newaxis, :] - X_train[np.newaxis, :, :]
-            dists = np.einsum('mnd,dd,mnd->mn', diffs, H_inv, diffs)
-            K = norm_const * np.exp(-0.5 * dists)
-
-            f_vals = np.mean(K, axis=1)
-            f_vals = np.clip(f_vals, 1e-300, None)
-            fold_log_likelihoods.append(np.mean(np.log(f_vals)))
-
-        mean_logLikelihoodLst.append(np.mean(fold_log_likelihoods))
-
-    mean_logLikelihoodLst = np.array(mean_logLikelihoodLst)
-    optimal_idx = np.argmax(mean_logLikelihoodLst)
-    optimalBandwidthMatrix = H_Matrix_candidateLst[optimal_idx]
-
-    return optimalBandwidthMatrix, mean_logLikelihoodLst
-
 # --- Estimate KDE at given points using batching 
 def calc_kdeGaussianEstimate_nD(points, data, bandwidth, batch_size=50):
     n, d = data.shape
@@ -230,12 +195,12 @@ def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points):
     plot_data = data if data.shape[0] <= 10000 else data[::10]
 
     plt.scatter(plot_data[:, 0], plot_data[:, 1], c='dimgrey', s=10, alpha=0.3, label='Samples')
-    plt.contour(X, Y, kde_vals, colors='navy', linewidths=1.5)
-    plt.contour(X, Y, pdf_vals, colors='firebrick', linestyles='dashed', linewidths=1.5)
+    plt.contour(X, Y, pdf_vals, colors='navy', linewidths=1.5)
+    plt.contour(X, Y, kde_vals, colors='firebrick', linestyles='dashed', linewidths=1.5)
 
     legend_elements = [
-        Line2D([0], [0], color='navy', lw=1.5, label='KDE Estimate pdf'),
-        Line2D([0], [0], color='firebrick', lw=1.5, linestyle='dashed', label='Empirical pdf'),
+        Line2D([0], [0], color='navy', lw=1.5, label='Empirical PDF'),
+        Line2D([0], [0], color='firebrick', lw=1.5, linestyle='dashed', label='KDE Estimate PDF'),
         Line2D([0], [0], marker='o', color='w', markerfacecolor='k', markersize=6, label='Samples', alpha=0.5)
     ]
 
@@ -335,230 +300,6 @@ def calc_KLDivergence_2D(grid_points, kde_vals_2d, pdf_vals_2d):
     print(f"\nKL divergence (2D): {kl_2d:.6f}\n")
     return kl_2d
 
-#############################################################################
-### CALCULATING MOMENTS
-#############################################################################
-
-# ---------------------------------------------
-# --- KDE PDF Evaluation Function ---
-# ---------------------------------------------
-
-# --- calculate the pdf estimate for a single point - NOT USED
-def calc_pdf_pointwise(point, data, bandwidthMatrix):
-    d = data.shape[1] if data.ndim > 1 else 1
-    n = data.shape[0]
-
-    if d == 1:
-        diffs = data - point
-        D2 = (diffs / bandwidthMatrix) ** 2
-        norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * bandwidthMatrix)
-        kernel_vals = np.exp(-0.5 * D2)
-        return (1.0 / n) * np.sum(norm_const * kernel_vals)
-
-    else:
-        H_inv = np.linalg.inv(bandwidthMatrix)
-        det_H = np.linalg.det(bandwidthMatrix)
-        diffs = data - point
-        u = diffs @ H_inv.T
-        D2 = np.sum(u ** 2, axis=1)
-        norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * (det_H))
-        kernel_vals = np.exp(-0.5 * D2)
-        return (1.0 / n) * np.sum(norm_const * kernel_vals)
-
-# --- calculate the pdf estimate for whole sample
-def calc_pdf_batch(points, data, bandwidthMatrix):
-    """
-    Vectorised KDE PDF evaluation at multiple points.
-
-    points: (m, d) array of evaluation points
-    data: (n, d) input data points
-    bandwidth: (d, d) bandwidth matrix
-
-    Returns:
-        pdf_vals: (m,) KDE density values at each point
-    """
-    d = data.shape[1] if data.ndim > 1 else 1
-    n = data.shape[0]
-    m = points.shape[0]
-
-    H_inv = np.linalg.inv(bandwidthMatrix)
-    det_H = np.linalg.det(bandwidthMatrix)
-
-    # Compute differences between each sample point and each data point:
-    # Result shape (m, n, d): broadcast points and data
-    diffs = points[:, np.newaxis, :] - data[np.newaxis, :, :]  # shape (m, n, d)
-
-    # Apply bandwidth inverse: (m, n, d) @ (d, d)T -> (m, n, d)
-    u = np.einsum('mnd,dk->mnk', diffs, H_inv.T)  # shape (m, n, d)
-
-    # Squared Mahalanobis distances: sum over d
-    D2 = np.sum(u**2, axis=2)  # shape (m, n)
-
-    # Kernel values
-    kernel_vals = np.exp(-0.5 * D2)  # shape (m, n)
-
-    norm_const = 1.0 / (np.sqrt((2 * np.pi)**d) * det_H)
-
-    # Sum over data points axis (n), average, and multiply by norm_const
-    result = (norm_const / n) * np.sum(kernel_vals, axis=1)  # shape (m,)
-
-    return result
-
-# ---------------------------------------------
-# --- Monte Carlo moment integration (Importance Sampling) 
-# ---------------------------------------------
-
-# --- calculate zeorth moment, mean, variance and covariance
-def calc_moments_importanceSampling_ALL(data, bandwidthMatrix, n_samplesMC):
-    """
-    Efficient calculation of moments via Monte Carlo importance sampling of KDE.
-
-    Returns:
-    - zerothMoment: scalar
-    - firstMomentVec: vector of means (shape d,)
-    - varianceVec: vector of variances (shape d,)
-    - covarianceMatrix: full covariance matrix (shape d x d)
-    """
-    d = data.shape[1]
-    mu = np.mean(data, axis=0)
-    cov = np.cov(data, rowvar=False)
-
-    try:
-        samples = np.random.multivariate_normal(mu, cov, size=n_samplesMC)
-    except np.linalg.LinAlgError:
-        # Return NaNs if sampling fails
-        return np.nan, np.full(d, np.nan), np.full(d, np.nan), np.full((d, d), np.nan)
-
-    q_pdf = multivariate_normal(mean=mu, cov=cov, allow_singular=True)
-    q_vals = q_pdf.pdf(samples)
-    p_vals = calc_pdf_batch(samples, data, bandwidthMatrix)
-
-    # Add guard to prevent division by zero or invalid weights
-    with np.errstate(divide='ignore', invalid='ignore'):
-        weights = np.where(q_vals > 0, p_vals / q_vals, 0.0)
-
-    weight_sum = np.sum(weights)
-    if weight_sum <= 1e-14 or not np.isfinite(weight_sum):
-        # Graceful fallback
-        return np.nan, np.full(d, np.nan), np.full(d, np.nan), np.full((d, d), np.nan)
-
-    zerothMoment = weight_sum / n_samplesMC
-    weighted_samples = weights[:, None] * samples
-    firstMomentVec = np.sum(weighted_samples, axis=0) / weight_sum
-
-    weighted_outer = np.einsum('i,ij,ik->jk', weights, samples, samples)
-    secondMomentMatrix = weighted_outer / weight_sum
-
-    covarianceMatrix = secondMomentMatrix - np.outer(firstMomentVec, firstMomentVec)
-    varianceVec = np.diag(covarianceMatrix)
-
-    return zerothMoment, firstMomentVec, varianceVec, covarianceMatrix
-
-# ---------------------------------------------
-# --- Errors 
-# ---------------------------------------------
-
-# --- calculate errors via bootstrap for importance method 
-def calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesBootStrap):
-    """
-    Bootstrap standard error for importance sampling KDE moments.
-    Extends to calculate covariance matrix error too.
-    """
-
-    n, d = data.shape
-    zeroth_moments = np.zeros(n_bootstrap)
-    first_moments = np.zeros((n_bootstrap, d))
-    variances = np.zeros((n_bootstrap, d))
-    covariances = np.zeros((n_bootstrap, d, d)) 
-
-    for i in range(n_bootstrap):
-        idxs = np.random.choice(n, size=n, replace=True)
-        resampled_data = data[idxs]
-
-        zerothMoment, firstMomentVec, varianceVec, covarianceMatrix = calc_moments_importanceSampling_ALL(
-            resampled_data, bandwidthMatrix, n_samplesMC=n_samplesBootStrap)
-
-        zeroth_moments[i] = zerothMoment
-        first_moments[i] = firstMomentVec
-        variances[i] = varianceVec
-        covariances[i] = covarianceMatrix
-
-    std_zeroth = np.std(zeroth_moments, ddof=1)
-    std_first = np.std(first_moments, axis=0, ddof=1)
-    std_variance = np.std(variances, axis=0, ddof=1)
-    std_covariance = np.std(covariances, axis=0, ddof=1)
-
-    return std_zeroth, std_first, std_variance, std_covariance
-
-# --- calculate bootstrap errors for empirical distributions
-def calc_bootstrapErrorEmpirical_all(data, n_bootstrap):
-    """
-    Returns bootstrap standard errors for mean, variance, and covariance.
-    
-    Parameters:
-    - data: ndarray of shape (n_samples, n_features)
-    - n_bootstrap: number of bootstrap resamples
-
-    Returns:
-    - dict with keys 'mean', 'variance', 'covariance', each containing bootstrap standard error
-    """
-    # Store bootstrap results
-    mean_samples = []
-    var_samples = []
-    cov_samples = []
-
-    n = data.shape[0]
-
-    for _ in range(n_bootstrap):
-        # Resample with replacement
-        indices = np.random.choice(n, size=n, replace=True)
-        resample = data[indices]
-
-        # Compute statistics
-        mean_samples.append(np.mean(resample, axis=0))
-        var_samples.append(np.var(resample, axis=0, ddof=1))
-        cov_samples.append(np.cov(resample, rowvar=False))
-
-    # Convert lists to arrays for std calculation
-    mean_samples = np.stack(mean_samples)
-    var_samples = np.stack(var_samples)
-    cov_samples = np.stack(cov_samples)
-
-    # Compute standard errors
-    mean_error = np.std(mean_samples, axis=0, ddof=1)
-    var_error = np.std(var_samples, axis=0, ddof=1)
-    cov_error = np.std(cov_samples, axis=0, ddof=1)
-
-    return mean_error, var_error, cov_error
-
-# ---------------------------------------------
-# --- Run Moments Code 
-# ---------------------------------------------
-
-# --- Run all the moment calculations
-def run_2D_momentCalculations(data, bandwidthMatrix, n_bootstrap=100, n_samplesMC=10000):
-    
-    zerothMoment, firstMomentVec, varianceVec, covarianceMatrix = calc_moments_importanceSampling_ALL(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
-    error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_covariance_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
-
-    # --- Empirical moments - calc moments + covariance
-    empirical_mean = np.mean(data, axis=0)
-    empirical_variance = np.var(data, axis=0, ddof=1)
-    empirical_covariance = np.cov(data, rowvar=False)
-
-    bootstrapError_mean, bootstrapError_variance, bootstrap_covariance = calc_bootstrapErrorEmpirical_all(data, n_bootstrap)
-
-    print("\n--- Moments ---")
-    print(f"Zeroth (KDE): {zerothMoment} with error {error_zeroth_is}\n")
-    
-    print(f"Mean (KDE): {firstMomentVec} with error {bootstrapError_mean_is}")
-    print(f"Mean (Empirical): {empirical_mean} with error {bootstrapError_mean}\n")
-
-    print(f"Variance (KDE): {varianceVec} with error {bootstrapError_variance_is}")
-    print(f"Variance (Empirical): {empirical_variance} with error {bootstrapError_variance}\n")
-
-    print(f"Covariance (KDE): {covarianceMatrix} with error {bootstrap_covariance_is}\n")
-    print(f"Covariance (Empirical): {empirical_covariance} with error {bootstrap_covariance}\n")
 
 #############################################################################
 #############################################################################
@@ -599,6 +340,8 @@ def main(kdeGridRes=150):
 
     keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+    
+    # choose flavours and index here
     keys_test = ['u', 'g']
     index = 28
     
@@ -608,7 +351,6 @@ def main(kdeGridRes=150):
 
     if bandwidthMatrix[0][0] >= 1e-8:
         run_2D_KDE_estimates_plot(data, bandwidthMatrix, x_idx=0, y_idx=1)
-        # run_2D_momentCalculations(data1, bandwidthMatrix)
 
         # Create 2D grid only for selected dims
         grid_axes_2d = [np.linspace(np.min(data[:, dim]) - 1, np.max(data[:, dim]) + 1, kdeGridRes) for dim in range(2)]

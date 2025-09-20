@@ -583,11 +583,11 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
 
 
     # Initialise matrices
-    cov_full = np.zeros((dim, dim))
+    # cov_full = np.zeros((dim, dim))
     cov_full_empirical = np.zeros((dim, dim))
-    corr_full = np.zeros((dim, dim))            
+    # corr_full = np.zeros((dim, dim))            
     corr_full_empirical = np.zeros((dim, dim))  
-    count_matrix = np.zeros((dim, dim))
+    # count_matrix = np.zeros((dim, dim))
     count_matrix_empirical = np.zeros((dim, dim))
 
     threshold = 1e-12  # for guarding variance
@@ -597,36 +597,36 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
 
         i, j, cov2x2, cov2x2_emp = res
 
-        # Extract variances and covariance
-        var_i_kde, var_j_kde = cov2x2[0, 0], cov2x2[1, 1]
-        cov_ij_kde = cov2x2[0, 1]
+        # # Extract variances and covariance
+        # var_i_kde, var_j_kde = cov2x2[0, 0], cov2x2[1, 1]
+        # cov_ij_kde = cov2x2[0, 1]
 
         var_i_emp, var_j_emp = cov2x2_emp[0, 0], cov2x2_emp[1, 1]
         cov_ij_emp = cov2x2_emp[0, 1]
 
-        std_i_kde = np.sqrt(var_i_kde) if var_i_kde > threshold else np.nan
-        std_j_kde = np.sqrt(var_j_kde) if var_j_kde > threshold else np.nan
+        # std_i_kde = np.sqrt(var_i_kde) if var_i_kde > threshold else np.nan
+        # std_j_kde = np.sqrt(var_j_kde) if var_j_kde > threshold else np.nan
 
         std_i_emp = np.sqrt(var_i_emp) if var_i_emp > threshold else np.nan
         std_j_emp = np.sqrt(var_j_emp) if var_j_emp > threshold else np.nan
 
-        denom_kde = std_i_kde * std_j_kde
+        # denom_kde = std_i_kde * std_j_kde
         denom_emp = std_i_emp * std_j_emp
 
         # KDE
-        cov_full[i, j] += cov_ij_kde
-        cov_full[j, i] += cov_ij_kde
-        cov_full[i, i] += var_i_kde
-        cov_full[j, j] += var_j_kde
-        count_matrix[i, j] += 1
-        count_matrix[j, i] += 1
-        count_matrix[i, i] += 1
-        count_matrix[j, j] += 1
+        # cov_full[i, j] += cov_ij_kde
+        # cov_full[j, i] += cov_ij_kde
+        # cov_full[i, i] += var_i_kde
+        # cov_full[j, j] += var_j_kde
+        # count_matrix[i, j] += 1
+        # count_matrix[j, i] += 1
+        # count_matrix[i, i] += 1
+        # count_matrix[j, j] += 1
 
-        if not np.isnan(denom_kde) and denom_kde > 0:
-            corr_val_kde = cov_ij_kde / denom_kde
-            corr_full[i, j] += corr_val_kde
-            corr_full[j, i] += corr_val_kde
+        # if not np.isnan(denom_kde) and denom_kde > 0:
+        #     corr_val_kde = cov_ij_kde / denom_kde
+        #     corr_full[i, j] += corr_val_kde
+        #     corr_full[j, i] += corr_val_kde
 
         # Empirical
         cov_full_empirical[i, j] += cov_ij_emp
@@ -645,17 +645,16 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
 
     # Normalise all matrices
     with np.errstate(invalid='ignore', divide='ignore'):
-        normalised_cov_kde = np.divide(cov_full, count_matrix, where=count_matrix > 0)
+        # normalised_cov_kde = np.divide(cov_full, count_matrix, where=count_matrix > 0)
         normalised_cov_emp = np.divide(cov_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
-        normalised_corr_kde = np.divide(corr_full, count_matrix, where=count_matrix > 0)
+        # normalised_corr_kde = np.divide(corr_full, count_matrix, where=count_matrix > 0)
         normalised_corr_emp = np.divide(corr_full_empirical, count_matrix_empirical, where=count_matrix_empirical > 0)
     
     # Due to conditions above this the diagonal is not calculated - it is one for correlation, so putting in here (not calculating to save time)
-    np.fill_diagonal(normalised_corr_kde, 1.0)
+    # np.fill_diagonal(normalised_corr_kde, 1.0)
     np.fill_diagonal(normalised_corr_emp, 1.0)
 
-    return normalised_cov_kde, normalised_corr_kde, normalised_cov_emp, normalised_corr_emp
-
+    return normalised_cov_emp, normalised_corr_emp # , normalised_cov_kde, normalised_corr_kde
 # ---------------------------------------------
 # --- Plot Matrix Code
 # ---------------------------------------------
