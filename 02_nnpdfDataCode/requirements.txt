@@ -1,0 +1,13 @@
+# Requirements for this project
+# Install with: pip install -r requirements.txt
+
+numpy
+scipy
+matplotlib
+scikit-learn
+joblib
+tqdm
+numba
+pandas
+lhapdf # install with: conda install -c conda-forge lhapdf
+

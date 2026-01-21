@@ -1,76 +1,211 @@
+"""
+Compute and compare 1D excess kurtosis from replicas.
+
+This script extracts 1D samples for each chosen flavour and grid index,
+estimates excess kurtosis in two ways – directly from the samples and
+from a 1D Gaussian KDE – and finally plots two histograms collecting the
+results across all flavours/indices.
+"""
+
 #############################################################################
 
-# File creates histogram from calculating the kurtosis for each 1D distribution
-# and plot as a histogram
-
-#############################################################################
-
+import os
 import pickle
 import numpy as np
 from pathlib import Path
-from matplotlib.lines import Line2D
 from sklearn.model_selection import KFold
 from matplotlib import pyplot as plt
-from scipy.stats import norm, multivariate_normal
-from scipy import stats
+from scipy.stats import norm
 
-# --- If running on separate laptop/computer, this will need commenting out 
-plt.style.use('pythonStyle')
-import pythonStyle as ed
+#############################################################################
+
+def _find_python_style():
+    """
+    Locate the ``pythonStyle.mplstyle`` file, if available.
+
+    The search starts from the directory containing this file and walks up
+    the directory tree until a file named ``pythonStyle.mplstyle`` is found.
+
+    Returns
+    -------
+    str or None
+        Absolute path to ``pythonStyle.mplstyle`` if found, otherwise
+        ``None``.
+    """
+
+    base = os.path.abspath(__file__)
+    while True:
+        directory = os.path.dirname(base)
+        if not directory or directory == os.path.sep:
+            return None
+        candidate = os.path.join(directory, "pythonStyle.mplstyle")
+        if os.path.exists(candidate):
+            return candidate
+        base = directory
+
+
+_style_path = _find_python_style()
+if _style_path is not None:
+    plt.style.use(_style_path)
+
 
 #############################################################################
 #############################################################################
 
-# --- Load serialised data
 def read_in_data():
-    paths = [Path("./flavour_basis.pkl"), Path("./evolution_basis.pkl")]
-    return (pickle.load(open(p, 'rb')) for p in paths)
+    """
+    Load serialised flavour- and evolution-basis replica data.
 
-# --- prepare each dimension and bring together
-def prepare_data(res, keys, indices):
+    The function expects the files ``flavour_basis.pkl`` and
+    ``evolution_basis.pkl`` to be located in the ``00_data`` directory that
+    sits alongside this script's parent directory.
+
+    Returns
+    -------
+    generator
+        A generator yielding two objects ``(res_flav, res_ev)``, each being
+        the unpickled contents of the corresponding file.
+    """
+
+    data_dir = Path(__file__).resolve().parent.parent / "00_data"
+    paths = [data_dir / "flavour_basis.pkl", data_dir / "evolution_basis.pkl"]
+    return (pickle.load(open(p, "rb")) for p in paths)
+
+
+def prepare_data(res, keys, index):
+    """
+    Extract replica values for selected flavours at a single grid index.
+
+    Parameters
+    ----------
+    res : list of dict
+        List of NNPDF replicas. Each replica is a dictionary mapping
+        flavour keys (e.g. 'u', 'd', 'g') to one-dimensional NumPy arrays
+        defined on a fixed grid.
+    keys : list of str
+        Flavour keys to extract from each replica.
+    index : int
+        Grid index at which the replica values are extracted.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape (n_replicas, n_flavours) containing the replica
+        values for the selected flavours at the specified grid index.
+    """
 
     num_replicas = len(res)
     num_keys = len(keys)
     
-    # Single index case, output 2D (num_replicas, num_keys)
     data_array = np.empty((num_replicas, num_keys), dtype=float)
     for i, replica in enumerate(res):
         for j, key in enumerate(keys):
-            data_array[i, j] = replica[key][indices]
+            data_array[i, j] = replica[key][index]
 
     return data_array
 
 #############################################################################
-### BUILDING KDE STUFF
+### BUILDING KDE STUFF 
 #############################################################################
 
-### --- helper function for calc_bandwidth_1d
-def calc_kdeCrossValidation_1d(data, hLst, k=5, subsample_size=10000):
+def calc_bandwidthMatrix(data, n=100000):
+    """Estimate a diagonal bandwidth matrix via cross-validation.
+
+    This helper constructs a family of diagonal bandwidth matrices based on
+    Silverman's rule-of-thumb scaling and selects the one that maximises the
+    cross-validated log-likelihood. Off-diagonal covariance terms are
+    ignored.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Array of shape ``(n_samples, d)`` containing the input samples.
+    n : int, optional
+        Unused argument retained for backwards compatibility.
+
+    Returns
+    -------
+    numpy.ndarray
+        Diagonal bandwidth matrix of shape ``(d, d)``.
     """
-    Cross-validation of 1D KDE bandwidths.
+
+    # Calculate Silverman bandwidth vector
+    n, d = data.shape
+    sigma = np.std(data, axis=0, ddof=1)
+    h_p = (4 / (d + 2)) ** (1 / (d + 4)) * n ** (-1 / (d + 4)) * sigma
+    # print(f'Initial h_p: {h_p}')
+
+    # Create candidate bandwidth matrices
+    scaling_factors = np.linspace(0.5, 2.0, 10)
+
+    H_Matrix_candidateLst = []
+    hLst = []
+
+    for s in scaling_factors:
+        H_diag = (s * h_p) ** 2
+        H_matrix = np.diag(H_diag)
+        H_Matrix_candidateLst.append(H_matrix)
+        hLst.append(H_diag)
+
+    # Cross-validation
+    bandwidthMatrix, _ = calc_kdeCrossValidation(data, H_Matrix_candidateLst, k=5, subsample_size=10000)
+    # print(bandwidthMatrix)
+
+    return bandwidthMatrix
+
+
+def calc_kdeCrossValidation(data, H_Matrix_candidateLst, k=5, subsample_size=10000):
     """
-    n = data.shape[0]
+    Select a bandwidth matrix by k-fold cross-validation.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input data of shape ``(n_samples, d)``.
+    H_Matrix_candidateLst : sequence of numpy.ndarray
+        List of candidate bandwidth matrices of shape ``(d, d)``.
+    k : int, optional
+        Number of folds for cross-validation.
+    subsample_size : int, optional
+        Maximum number of samples used for CV (for speed). If the dataset
+        is smaller, all samples are used.
+
+    Returns
+    -------
+    tuple
+        ``(optimalBandwidthMatrix, mean_logLikelihoodLst)`` where
+        ``optimalBandwidthMatrix`` is the best-performing candidate and
+        ``mean_logLikelihoodLst`` contains the mean log-likelihood per
+        candidate.
+    """
+
+    n, d = data.shape
     kf = KFold(n_splits=k, shuffle=True, random_state=42)
     mean_logLikelihoodLst = []
 
-    # Subsampling for speed
+    # Use subsampling to reduce computation
     if n > subsample_size:
         indices = np.random.choice(n, subsample_size, replace=False)
         data_sub = data[indices]
     else:
         data_sub = data
 
-    for h in hLst:
-        norm_const = 1.0 / np.sqrt(2 * np.pi * h ** 2)
+    for H in H_Matrix_candidateLst:
+        H = np.array(H)
+        H_inv = np.linalg.inv(H)
+        det_H = np.linalg.det(H)
+
+        norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * np.sqrt(det_H))
+
         fold_log_likelihoods = []
 
         for train_idx, val_idx in kf.split(data_sub):
             X_train = data_sub[train_idx]
             X_val = data_sub[val_idx]
 
-            diffs = X_val[:, None] - X_train[None, :]  # shape (m, n)
-            dists = diffs ** 2
-            K = norm_const * np.exp(-0.5 * dists / h ** 2)
+            diffs = X_val[:, np.newaxis, :] - X_train[np.newaxis, :, :]
+            dists = np.einsum('mnd,dd,mnd->mn', diffs, H_inv, diffs)
+            K = norm_const * np.exp(-0.5 * dists)
 
             f_vals = np.mean(K, axis=1)
             f_vals = np.clip(f_vals, 1e-300, None)
@@ -80,61 +215,82 @@ def calc_kdeCrossValidation_1d(data, hLst, k=5, subsample_size=10000):
 
     mean_logLikelihoodLst = np.array(mean_logLikelihoodLst)
     optimal_idx = np.argmax(mean_logLikelihoodLst)
-    optimal_bandwidth = hLst[optimal_idx]
+    optimalBandwidthMatrix = H_Matrix_candidateLst[optimal_idx]
 
-    return optimal_bandwidth
+    return optimalBandwidthMatrix, mean_logLikelihoodLst
 
-# --- calculate the bandwidth parameter
-def calc_bandwidth_1d(data, n=100000):
-    """
-    Bandwidth selection using Silverman's rule and cross-validation for 1D data.
-    """
-    
-    n = data.shape[0]
-    sigma = np.std(data, ddof=1)
-    h_p = (4 / (1 + 2)) ** (1 / (1 + 4)) * n ** (-1 / (1 + 4)) * sigma
-    # print(f'Initial h_p: {h_p}')
-
-    scaling_factors = np.linspace(0.5, 2.0, 10)
-    hLst = scaling_factors * h_p
-
-    bandwidth = calc_kdeCrossValidation_1d(data, hLst, k=5, subsample_size=10000)
-    # print(f'Optimal bandwidth: {bandwidth}')
-
-    return bandwidth
-
-#############################################################################
-### CALCULATE MOMENTS
-#############################################################################
-
-# ---------------------------------------------
-# --- KDE PDF Evaluation Function
-# ---------------------------------------------
+# --------------------------------------------------------
+# --- Calc PDF
+# --------------------------------------------------------
 
 # --- calculate the pdf estimate for a single point
-def calc_pdf_pointwise(point, data, bandwidthParameter):
-    d = data.shape[1] if data.ndim > 1 else 1
-    n = data.shape[0]
+def calc_pdf_pointwise(point, data, bandwidth):
+    """
+    Evaluate a 1D Gaussian KDE probability density function at a single point.
+
+    Parameters
+    ----------
+    point : float
+        Evaluation point.
+    data : numpy.ndarray
+        One-dimensional sample array of shape ``(n_samples,)`` or
+        ``(n_samples, 1)``.
+    bandwidth : float
+        Scalar bandwidth parameter ``h``.
+
+    Returns
+    -------
+    float
+        KDE value at the evaluation point.
+    """
+
+    data = np.asarray(data).ravel()
+    n = data.size
+    d = 1
 
     diffs = data - point
-    D2 = (diffs / bandwidthParameter) ** 2
-    norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * bandwidthParameter)
+    D2 = (diffs / bandwidth) ** 2
+    norm_const = 1.0 / ((2 * np.pi) ** (d / 2) * bandwidth)
     kernel_vals = np.exp(-0.5 * D2)
+    
     return (1.0 / n) * np.sum(norm_const * kernel_vals)
 
-# ---------------------------------------------
+# --------------------------------------------------------
 # --- Monte Carlo moment integration (Importance Sampling)
-# ---------------------------------------------
+# --------------------------------------------------------
 
-# --- calculate first four normalised cumulants from KDE 
-def calc_moments_importanceSampling(data, bandwidth, n_samplesMC):
+def calc_kurtosis(data, bandwidth, n_samplesMC):
+    """Estimate excess kurtosis of the 1D KDE via importance sampling.
+
+    A Gaussian proposal is fitted to the data and used to draw Monte
+    Carlo samples. Importance weights are constructed from the ratio of
+    KDE to proposal densities. Internally this computes the zeroth,
+    first and second moments, but only the excess kurtosis is returned.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        One-dimensional sample array of shape ``(n_samples,)``.
+    bandwidth : float
+        Scalar bandwidth parameter for the KDE.
+    n_samplesMC : int
+        Number of Monte Carlo samples drawn from the proposal.
+
+    Returns
+    -------
+    float
+        Excess kurtosis of the KDE, defined so that a Gaussian has
+        value zero.
+    """
+
+    data = np.asarray(data).ravel()
 
     # Proposal distribution: Gaussian fit to the data
     mu = np.mean(data)
     var = np.var(data, ddof=1)
 
     samples = np.random.normal(mu, np.sqrt(var), size=n_samplesMC)
-    q_vals = stats.norm.pdf(samples, loc=mu, scale=np.sqrt(var))  # shape (n_samples,)
+    q_vals = norm.pdf(samples, loc=mu, scale=np.sqrt(var))  # shape (n_samples,)
 
     # Target distribution: KDE
     p_vals = np.array([calc_pdf_pointwise(point, data, bandwidth) for point in samples])  # shape (n_samples,)
@@ -143,6 +299,7 @@ def calc_moments_importanceSampling(data, bandwidth, n_samplesMC):
 
     # Zeroth moment (integral of p/q ~ 1 if proposal is good)
     zeroth_moment = np.mean(weights)
+    # print(zeroth_moment)
 
     # First moment (mean)
     weighted_mean = np.sum(weights * samples) / np.sum(weights)
@@ -156,160 +313,60 @@ def calc_moments_importanceSampling(data, bandwidth, n_samplesMC):
     weighted_x4 = np.sum(weights * centered_samples**4) / np.sum(weights)
     excessKurtosis = (weighted_x4 / (variance**2)) - 3 # minus three makes it excess kurtosis (without is just kurtosis)
 
-    return zeroth_moment, weighted_mean, variance, excessKurtosis
+    return excessKurtosis
 
-# --- calculate first four normalised cumulants direct from data
-def calc_empiricalMoments(data):
+def calc_empirical_kurtosis(data):
     """
-    Compute empirical mean, variance, and kurtosis (per dimension).
-    Kurtosis = E[(x - mu)^4] / sigma^4
+    Compute empirical excess kurtosis for 1D data.
 
-    Parameters:
-        data : array of shape (n_samples, d)
 
-    Returns:
-        mean : shape (d,)
-        variance : shape (d,)
-        kurtosis : shape (d,)
+    Parameters
+    ----------
+    data : numpy.ndarray
+        One-dimensional sample array.
+
+    Returns
+    -------
+    float
+        Empirical excess kurtosis.
     """
-    mean = np.mean(data, axis=0)
-    variance = np.var(data, axis=0, ddof=1)  
+
+    data = np.asarray(data).ravel()
+    mean = np.mean(data)
+    variance = np.var(data, ddof=1)
     centered = data - mean
-    fourth_moment = np.mean(centered**4, axis=0)
-    excessKurtosis = (fourth_moment / (variance**2)) - 3
-    return mean, variance, excessKurtosis 
+    fourth_moment = np.mean(centered**4)
+    excess_kurtosis = (fourth_moment / (variance**2)) - 3
 
-# ---------------------------------------------
-# --- Errors ---
-# ---------------------------------------------
-
-# --- calculate errors via bootstrap for importance method 
-def calc_bootstrap_error_mc_importance(data, bandwidth, n_bootstrap, n_samplesBootStrap):
-    """
-    Bootstrap standard error for importance sampling KDE moments.
-    Calculates standard errors of zeroth moment, mean, variance, and kurtosis.
-    """
-
-    n = data.shape[0] 
-    zeroth_moments = np.zeros(n_bootstrap)
-    means = np.zeros(n_bootstrap)
-    variances = np.zeros(n_bootstrap)
-    kurtoses = np.zeros(n_bootstrap)
-
-    for i in range(n_bootstrap):
-        idxs = np.random.choice(n, size=n, replace=True)
-        resampled_data = data[idxs]
-
-        zerothMoment, mean, variance, kurtosis = calc_moments_importanceSampling(resampled_data, bandwidth, n_samplesMC=n_samplesBootStrap)
-
-        zeroth_moments[i] = zerothMoment
-        means[i] = mean
-        variances[i] = variance
-        kurtoses[i] = kurtosis
-
-    std_zeroth = np.std(zeroth_moments, ddof=1)
-    std_mean = np.std(means, ddof=1)
-    std_variance = np.std(variances, ddof=1)
-    std_kurtosis = np.std(kurtoses, ddof=1)
-
-    return std_zeroth, std_mean, std_variance, std_kurtosis
-
-def bootstrap_moment_errors(data, n_bootstrap=1000, seed=None):
-    """
-    Compute bootstrap standard errors for mean, variance, and kurtosis.
-
-    Parameters:
-        data : array of shape (n_samples, d)
-        n_bootstrap : number of bootstrap resamples
-        seed : optional, for reproducibility
-
-    Returns:
-        std_err_mean : shape (d,)
-        std_err_var : shape (d,)
-        std_err_kurt : shape (d,)
-    """
-    rng = np.random.default_rng(seed)
-    n_samples, d = data.shape
-
-    means = np.zeros((n_bootstrap, d))
-    vars_ = np.zeros((n_bootstrap, d))
-    kurts = np.zeros((n_bootstrap, d))
-
-    for i in range(n_bootstrap):
-        sample_indices = rng.integers(0, n_samples, size=n_samples)
-        sample = data[sample_indices]
-        mean, var, kurt = calc_empiricalMoments(sample)
-        means[i] = mean
-        vars_[i] = var
-        kurts[i] = kurt
-
-    std_err_mean = np.std(means, axis=0, ddof=1)
-    std_err_var = np.std(vars_, axis=0, ddof=1)
-    std_err_kurt = np.std(kurts, axis=0, ddof=1)
-
-    return std_err_mean, std_err_var, std_err_kurt 
-
-# --- Function to run the moments calculations
-def run_1D_momentCalculations(data, bandwidthMatrix, n_bootstrap=250, n_samplesMC=10000):
-    
-    # --- KDE Integration to calculate moments
-    zerothMoment, firstMomentVec, varianceVec, kurtosisVec = calc_moments_importanceSampling(data, bandwidthMatrix, n_samplesMC=n_samplesMC)
-    error_zeroth_is, bootstrapError_mean_is, bootstrapError_variance_is, bootstrap_kurtosis_is = calc_bootstrap_error_mc_importance(data, bandwidthMatrix, n_bootstrap, n_samplesMC)
-
-    # --- Empirical moments to calculate moments
-    empirical_mean, empirical_variance, empirical_kurtosis = calc_empiricalMoments(data)
-    bootstrapError_mean, bootstrapError_variance, bootstrap_kurtosis =  bootstrap_moment_errors(data)
-
-    # print("\n--- Moments ---")
-    # print(f"Zeroth (KDE): {zerothMoment} with error {error_zeroth_is}\n")
-    
-    # print(f"Mean (KDE): {firstMomentVec} with error {bootstrapError_mean_is}")
-    # print(f"Mean (Empirical): {empirical_mean} with error {bootstrapError_mean}\n")
-
-    # print(f"Variance (KDE): {varianceVec} with error {bootstrapError_variance_is}")
-    # print(f"Variance (Empirical): {empirical_variance} with error {bootstrapError_variance}\n")
-
-    # print(f"Excess kurtosis (KDE): {kurtosisVec} with error {bootstrap_kurtosis_is}\n")
-    # print(f"Excess kurtosis  (Empirical): {empirical_kurtosis} with error {bootstrap_kurtosis}\n")
-
-    return kurtosisVec, bootstrap_kurtosis_is, empirical_kurtosis, bootstrap_kurtosis
+    return float(excess_kurtosis)
 
 #############################################################################
 #############################################################################
 
-# ---------------------------------------------
-# --- Graphs etc of 450 dimensions stuff
-# ---------------------------------------------
-
-# --- Filter to set cut-off point
-def filter_kurtosis_data(kurtosis_list, error_list, max_kurtosis=5):
-    """Filters kurtosis values and corresponding errors based on a threshold (defined by max_kurtosis)."""
-    
-    filtered_kurtosis = []
-    filtered_errors = []
-    
-    for k, err in zip(kurtosis_list, error_list):
-        if k <= max_kurtosis:
-            filtered_kurtosis.append(k)
-            filtered_errors.append(err)
-    
-    return filtered_kurtosis, filtered_errors
-
-# --- plot big histogram of kurtosis
+# --- Plot histograms of kurtosis
 def plot_kurtosis_histograms(KDE_data, empirical_data):
-    """Plots histograms of filtered kurtosis data."""
+    """
+    Plot histograms of KDE-based and empirical excess kurtosis.
+
+    Parameters
+    ----------
+    KDE_data : sequence of float
+        List of KDE-based excess kurtosis values.
+    empirical_data : sequence of float
+        List of empirically estimated excess kurtosis values.
+    """
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
     axs[0].hist(KDE_data, bins=100, color="#68A5A1", edgecolor='black')
     axs[0].set_xlabel('Excess Kurtosis')
     axs[0].set_ylabel('Frequency')
-    axs[0].set_title('Integral Method', fontsize=12)
+    axs[0].set_title('KDE-based excess kurtosis', fontsize=12)
     axs[0].tick_params(axis='both')  
 
     axs[1].hist(empirical_data, bins=100, color="#68A5A1", edgecolor='black')
     axs[1].set_xlabel('Excess Kurtosis')
     axs[1].set_ylabel('Frequency')
-    axs[1].set_title('Empirical Method', fontsize=12)
+    axs[1].set_title('Empirical excess kurtosis', fontsize=12)
     axs[1].tick_params(axis='both')  
 
     plt.tight_layout()
@@ -321,45 +378,54 @@ def plot_kurtosis_histograms(KDE_data, empirical_data):
 
 # --- Main Function
 def main():
-    res_flav, res_ev = read_in_data()
+    """
+    Compute kurtosis (KDE and empirical) and plot two histograms.
 
-    # keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
+    For each chosen flavour and grid index, this function extracts the
+    corresponding replica values, calculates the 1D bandwidth via cross validation 
+    then constructs the 1D gaussian KDE probability density function. Using this the excess kurtosis is
+    calculated via importance sampling. 
     
-    ## --- Change here for number of indices and flavours to include
-    keys_flav = ['d'] # 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+    In addition, the excess kurtosis is estimated directly from the samples
+     
+    finally we plot two histograms collecting these values across all (flavour, index) pairs.
+    """
+
+    res_flav, _ = read_in_data()
+
+    # --- Change here for number of indices and flavours to include
+    keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     indices = np.arange(5)
-    
+
     kurtosis_KDE_Lst = []
-    kurtosis_KDE_errorLst = []
     kurtosis_empirical_Lst = []
-    kurtosis_empirical_errorLst = []
 
     total = len(keys_flav) * len(indices)
     count = 0
 
-    # Loop and data collection
     for key in keys_flav:
         for index in indices:
             count += 1
-            print(f'Processing {count} / {total}  (key={key}, index={index})')        
-            
-            # fetch data
-            data = prepare_data(res_flav, [key], index)
+            print(f'Processing {count} / {total}  (key={key}, index={index})')
 
-            # Run analysis
-            bandwidthParameter = calc_bandwidth_1d(data)
-            kurtosis_KDE, kurtosisError_KDE, kurtosis_empirical, kurtosisError_empirical = run_1D_momentCalculations(data, bandwidthParameter)
+            # Fetch 1D data for this flavour and index
+            data = prepare_data(res_flav, [key], index)  # shape (n_replicas, 1)
+            data_1d = data[:, 0]
 
-            # Collect results
-            kurtosis_KDE_Lst.append(kurtosis_KDE)  
-            kurtosis_KDE_errorLst.append(kurtosisError_KDE)
+            # Bandwidth calculation: use 2D (n_samples, 1) for calc_bandwidthMatrix
+            bandwidthMatrix = calc_bandwidthMatrix(data)
+            bandwidth = float(np.sqrt(bandwidthMatrix[0, 0]))
+
+            # KDE-based kurtosis using that bandwidth
+            kurtosis_KDE = calc_kurtosis(data_1d, bandwidth, n_samplesMC=20000)
+
+            # Empirical kurtosis from the same samples
+            kurtosis_empirical = calc_empirical_kurtosis(data_1d)
+
+            kurtosis_KDE_Lst.append(float(kurtosis_KDE))
             kurtosis_empirical_Lst.append(float(kurtosis_empirical))
-            kurtosis_empirical_errorLst.append(float(kurtosisError_empirical))
 
-    # Filter results
-    filtered_KDE, _ = filter_kurtosis_data(kurtosis_KDE_Lst, kurtosis_KDE_errorLst)
-    filtered_empirical, _ = filter_kurtosis_data(kurtosis_empirical_Lst, kurtosis_empirical_errorLst)
-    plot_kurtosis_histograms(filtered_KDE, filtered_empirical)
+    plot_kurtosis_histograms(kurtosis_KDE_Lst, kurtosis_empirical_Lst)
 
 if __name__ == "__main__":
     main()

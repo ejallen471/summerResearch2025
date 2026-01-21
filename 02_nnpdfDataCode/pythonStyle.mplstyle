@@ -1,0 +1,50 @@
+# pythonStyle.mplstyle
+
+# Use LaTeX for all text rendering
+text.usetex: True
+
+# LaTeX / Computer Modern style fonts
+font.family: serif
+font.serif: Computer Modern Roman, Times, Palatino, Serif
+
+font.size: 18
+axes.titlesize: 18
+axes.labelsize: 18
+xtick.labelsize: 14
+ytick.labelsize: 14
+
+lines.linewidth: 2.5
+lines.markersize: 12
+lines.markeredgewidth: 0
+
+legend.fancybox: True
+legend.framealpha: 0.9
+legend.numpoints: 1
+legend.scatterpoints: 1
+legend.title_fontsize: 12
+legend.fontsize: 12
+
+axes.facecolor: 0.95
+axes.edgecolor: white
+axes.axisbelow: True
+
+axes.grid: True
+axes.grid.axis: both
+grid.color: white
+grid.linestyle: -
+grid.linewidth: 1.5
+
+xtick.major.size: 0
+xtick.minor.size: 0
+ytick.major.size: 0
+ytick.minor.size: 0
+
+axes.linewidth: 1
+figure.autolayout: True
+patch.linewidth: 1
+patch.facecolor: 0,0.196078,0.372549
+patch.edgecolor: white
+patch.antialiased: True
+
+# Set default colour cycle: first two colours fixed
+axes.prop_cycle: cycler(color=['#692859', '#0f5248', '#1f77b4', '#ff7f0e', '#2ca02c'])

@@ -1,22 +1,64 @@
+"""
+Two-dimensional KDE and empirical PDF comparison for NNPDF replicas.
+
+This module loads flavour-basis replica data, extracts two chosen parton
+flavours at a fixed grid index, and compares a Gaussian kernel density
+estimate (KDE) to the empirical Gaussian PDF fit to the same samples.
+
+The main workflow is:
+
+- load serialised replica data from the 00_data directory,
+- prepare a two-dimensional sample array for the selected flavours,
+- estimate a full bandwidth matrix via smoothed cross-validation (SCV),
+- evaluate the KDE and empirical Gaussian on a 2D grid,
+- visualise samples with overlaid PDF and KDE contours,
+- optionally compute the 2D KL divergence between KDE and empirical PDF.
+
+Utility helpers are also provided for 1D diagnostic histograms and for
+finding the custom Matplotlib style file used across the project.
+"""
+
 #############################################################################
 
-# Program will plot a scatter graph with the empirical PDF and KDE PDF superimposed 
-# Choose two flavours and one grid index
-
-#############################################################################
-
+import os
 import pickle
 import numpy as np
 from pathlib import Path
-from sklearn.model_selection import KFold
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from scipy.stats import norm, multivariate_normal
 from scipy.optimize import minimize
 
-# If running on separate laptop/computer, this will need commenting out 
-plt.style.use('pythonStyle')
-import pythonStyle as ed
+#############################################################################
+
+def _find_python_style():
+    """
+    Locate the ``pythonStyle.mplstyle`` file, if available.
+
+    The search starts from the directory containing this file and walks up
+    the directory tree until a file named ``pythonStyle.mplstyle`` is found.
+
+    Returns
+    -------
+    str or None
+        Absolute path to ``pythonStyle.mplstyle`` if found, otherwise
+        ``None``.
+    """
+
+    base = os.path.abspath(__file__)
+    while True:
+        directory = os.path.dirname(base)
+        if not directory or directory == os.path.sep:
+            return None
+        candidate = os.path.join(directory, "pythonStyle.mplstyle")
+        if os.path.exists(candidate):
+            return candidate
+        base = directory
+
+
+_style_path = _find_python_style()
+if _style_path is not None:
+    plt.style.use(_style_path)
 
 np.random.seed(4)
 
@@ -25,28 +67,78 @@ np.random.seed(4)
 
 # --- Load serialised data
 def read_in_data():
-    paths = [Path("./flavour_basis.pkl"), Path("./evolution_basis.pkl")]
-    return (pickle.load(open(p, 'rb')) for p in paths)
+    """
+    Load serialised flavour- and evolution-basis replica data.
+
+    The data are loaded from the 00_data directory located one level above
+    this script. Two pickled objects are read: one in the flavour basis and
+    one in the evolution basis.
+
+    Returns
+    -------
+    generator of list of dict
+        Generator yielding the flavour-basis replica list and the
+        evolution-basis replica list.
+    """
+
+    data_dir = Path(__file__).resolve().parent.parent / "00_data"
+    paths = [data_dir / "flavour_basis.pkl", data_dir / "evolution_basis.pkl"]
+    return (pickle.load(open(p, "rb")) for p in paths)
 
 # --- Extract 2D data at fixed index
 def prepare_2d_data(res, key_x, key_y, index=25):
+    """
+    Extract two flavours at a fixed grid index into a 2D array.
+
+    Parameters
+    ----------
+    res : sequence of dict
+        Replica list where each element is a dictionary mapping flavour
+        keys to arrays over the x-grid.
+    key_x : str
+        Flavour key to use for the x-dimension.
+    key_y : str
+        Flavour key to use for the y-dimension.
+    index : int, optional
+        Grid index to select from each replica, by default 25.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape (n_replicas, 2) containing the selected flavour
+        values for each replica.
+    """
+
     return np.array([[r[key_x][index], r[key_y][index]] for r in res])
 
 # --- Get data and transform into one single array
 def prepare_data(res, keys, indices=None):
     """
-    Prepare data from res list of dicts.
+    Prepare replica data for one or more flavours and grid indices.
 
-    Parameters:
-    - res: list of replicas (each replica is a dict of arrays)
-    - keys: list of keys to extract
-    - indices: None, int, or list/array of ints
+    Parameters
+    ----------
+    res : sequence of dict
+        List of replicas, each a dictionary mapping flavour keys to
+        one-dimensional arrays over the x-grid.
+    keys : sequence of str
+        Flavour keys to extract from each replica.
+    indices : None, int or array-like of int, optional
+        Grid index or indices to extract. If ``None``, all indices
+        (0..49) are used. If an integer is provided, a single index is
+        selected. If an array-like is provided, multiple indices are
+        extracted.
 
-    Returns:
-    - np.ndarray of shape:
-        (num_replicas, num_keys) if indices is int or None
-        (num_replicas, num_keys, len(indices)) if indices is list/array
+    Returns
+    -------
+    numpy.ndarray
+        If ``indices`` is an int or ``None``, the shape is
+        ``(n_replicas, n_keys, n_indices)`` where ``n_indices`` is 50
+        when ``indices`` is ``None`` and 1 when it is an int.
+        If ``indices`` is array-like, the shape is
+        ``(n_replicas, n_keys, len(indices))``.
     """
+
     num_replicas = len(res)
     num_keys = len(keys)
 
@@ -54,19 +146,12 @@ def prepare_data(res, keys, indices=None):
         # Use all indices (0..49)
         indices = np.arange(50)
     
-    if isinstance(indices, int):
-        # Single index case, output 2D (num_replicas, num_keys)
-        data_array = np.empty((num_replicas, num_keys), dtype=float)
-        for i, replica in enumerate(res):
-            for j, key in enumerate(keys):
-                data_array[i, j] = replica[key][indices]
-    else:
-        # Multiple indices case, output 3D (num_replicas, num_keys, len(indices))
-        indices = np.array(indices)
-        data_array = np.empty((num_replicas, num_keys, len(indices)), dtype=float)
-        for i, replica in enumerate(res):
-            for j, key in enumerate(keys):
-                data_array[i, j, :] = replica[key][indices]
+    # Multiple indices case, output 3D (num_replicas, num_keys, len(indices))
+    indices = np.array(indices)
+    data_array = np.empty((num_replicas, num_keys, len(indices)), dtype=float)
+    for i, replica in enumerate(res):
+        for j, key in enumerate(keys):
+            data_array[i, j, :] = replica[key][indices]
 
     return data_array
 
@@ -76,6 +161,34 @@ def prepare_data(res, keys, indices=None):
 
 # --- helper function for estimate_bandwidth_matrix_scv
 def scv_objective(params, data, epsilon=1e-8, max_exp_arg=700):
+    """
+    Smoothed cross-validation (SCV) objective for multivariate Gaussian KDE.
+
+    The bandwidth matrix is parameterised via its lower-triangular
+    Cholesky factor. This function evaluates the negative log
+    leave-one-out likelihood for a given set of Cholesky parameters.
+
+    Parameters
+    ----------
+    params : numpy.ndarray
+        One-dimensional array containing the lower-triangular entries
+        of the Cholesky factor ``L`` of shape ``(d, d)``.
+    data : numpy.ndarray
+        Sample matrix of shape ``(n_samples, d)``.
+    epsilon : float, optional
+        Small positive value added to the diagonal of the bandwidth
+        matrix for numerical stability, by default 1e-8.
+    max_exp_arg : float, optional
+        Upper bound for the exponent argument used when evaluating the
+        Gaussian kernel to avoid overflow in ``exp``, by default 700.
+
+    Returns
+    -------
+    float
+        Scalar SCV score (negative log leave-one-out likelihood) to be
+        minimised.
+    """
+
     n, d = data.shape
 
     # Build lower-triangular matrix L from params
@@ -128,14 +241,30 @@ def scv_objective(params, data, epsilon=1e-8, max_exp_arg=700):
 # --- calculate the bandwidth matrix - the whole matrix 
 def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
     """
-    Estimate bandwidth matrix H via SCV with numerical stability.
+    Estimate the full bandwidth matrix via SCV.
 
-    Parameters:
-        data: (n_samples, d) input data
-        initial_scale: float, initial scale for diagonal of L
+    The bandwidth matrix ``H`` is parameterised as ``H = L L^T`` where
+    ``L`` is lower-triangular. The parameters of ``L`` are optimised by
+    minimising the SCV objective.
 
-    Returns:
-        H_opt: (d, d) estimated bandwidth matrix
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input sample matrix of shape ``(n_samples, d)``.
+    initial_scale : float, optional
+        Scaling factor applied to the initial diagonal of ``L`` based
+        on the empirical standard deviation of each dimension,
+        by default 1.0.
+
+    Returns
+    -------
+    numpy.ndarray
+        Estimated bandwidth matrix ``H`` of shape ``(d, d)``.
+
+    Raises
+    ------
+    RuntimeError
+        If the SCV optimisation does not converge successfully.
     """
     n, d = data.shape
 
@@ -154,7 +283,7 @@ def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
     )
 
     if not result.success:
-        raise RuntimeError(f"Optimization failed: {result.message}")
+        raise RuntimeError(f"Optimisation failed: {result.message}")
 
     L_opt = np.zeros((d, d))
     L_opt[np.tril_indices(d)] = result.x
@@ -166,6 +295,27 @@ def estimate_bandwidth_matrix_scv(data, initial_scale=1.0):
 
 # --- Estimate KDE at given points using batching 
 def calc_kdeGaussianEstimate_nD(points, data, bandwidth, batch_size=50):
+    """
+    Evaluate a multivariate Gaussian KDE on a set of points.
+
+    Parameters
+    ----------
+    points : numpy.ndarray
+        Evaluation points of shape ``(m, d)``.
+    data : numpy.ndarray
+        Sample matrix of shape ``(n_samples, d)``.
+    bandwidth : numpy.ndarray
+        Bandwidth matrix ``H`` of shape ``(d, d)``.
+    batch_size : int, optional
+        Number of evaluation points to process per batch in order to
+        reduce memory usage, by default 50.
+
+    Returns
+    -------
+    numpy.ndarray
+        Estimated densities at each evaluation point, shape ``(m,)``.
+    """
+
     n, d = data.shape
     m = points.shape[0]
 
@@ -186,7 +336,32 @@ def calc_kdeGaussianEstimate_nD(points, data, bandwidth, batch_size=50):
     return densities
 
 # --- Plot KDE estimate and PDF estimate in 2D
-def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points):
+def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points, key_x, key_y, index):
+    """
+    Plot samples with empirical and KDE contour lines in 2D.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Sample matrix of shape ``(n_samples, 2)`` for the two selected
+        flavours.
+    kde_vals : numpy.ndarray
+        KDE density values evaluated on the 2D grid, with shape
+        matching the reshaped grid, e.g. ``(n_y, n_x)``.
+    pdf_vals : numpy.ndarray
+        Empirical Gaussian PDF values evaluated on the same 2D grid and
+        with the same shape as ``kde_vals``.
+    grid_points : numpy.ndarray
+        Flattened grid coordinates of shape ``(n_points, 2)`` used to
+        build the 2D mesh.
+    key_x : str
+        Flavour label for the x-axis.
+    key_y : str
+        Flavour label for the y-axis.
+    index : int
+        Grid index in the underlying x-grid associated with the plot.
+    """
+
     x_unique = np.unique(grid_points[:, 0])
     y_unique = np.unique(grid_points[:, 1])
     X, Y = np.meshgrid(x_unique, y_unique)
@@ -205,9 +380,9 @@ def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points):
     ]
 
     plt.legend(handles=legend_elements)
-    # plt.title(f'KDE vs Sample PDF', fontsize=16)
-    # plt.xlabel('X', fontsize=14)
-    # plt.ylabel('Y', fontsize=14)
+    plt.xlabel(f"{key_x}(x, Q)", fontsize=14)
+    plt.ylabel(f"{key_y}(x, Q)", fontsize=14)
+    plt.title(f"KDE vs Empirical PDF ({key_x}, {key_y}; grid index {index})", fontsize=16)
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -215,14 +390,22 @@ def plot_kde_vs_pdf_2d(data, kde_vals, pdf_vals, grid_points):
 # --- Plot 1D histograms - included for checking the underlying distributions
 def plot_histograms_with_pdf(data, bandwidthMatrix, dim=0, bins=50):
     """
-    Plot histogram, empirical PDF, and KDE estimate for one dimension of data,
-    using bandwidth from the multidimensional bandwidth matrix.
+    Plot a 1D histogram with empirical Gaussian and KDE overlays.
 
-    Args:
-        data: (n, d) ndarray, dataset
-        bandwidthMatrix: (d, d) ndarray, bandwidth matrix from multidim KDE
-        dim: int, dimension index to plot (default 0)
-        bins: int, number of histogram bins
+    This is intended as a diagnostic to inspect the marginal
+    distribution implied by the multidimensional bandwidth matrix.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Sample matrix of shape ``(n_samples, d)``.
+    bandwidthMatrix : numpy.ndarray
+        Full bandwidth matrix of shape ``(d, d)`` estimated from the
+        multidimensional KDE.
+    dim : int, optional
+        Index of the dimension to plot, by default 0.
+    bins : int, optional
+        Number of histogram bins, by default 50.
     """
     
     # Extract 1D data for the selected dimension
@@ -268,9 +451,25 @@ def plot_histograms_with_pdf(data, bandwidthMatrix, dim=0, bins=50):
 # --- Calculate the KL divergence between the empirical distribution and kde distribution
 def calc_KLDivergence_2D(grid_points, kde_vals_2d, pdf_vals_2d):
     """
-    Compute KL divergence D_KL(P || Q) over a 2D grid:
-    P = KDE estimate
-    Q = reference PDF (true Gaussian)
+    Compute the 2D KL divergence between KDE and empirical PDF.
+
+    The divergence is approximated by numerical integration over the
+    supplied 2D grid.
+
+    Parameters
+    ----------
+    grid_points : numpy.ndarray
+        Flattened grid coordinates of shape ``(n_points, 2)``.
+    kde_vals_2d : numpy.ndarray
+        KDE density values on the 2D grid, shape ``(n_y, n_x)``.
+    pdf_vals_2d : numpy.ndarray
+        Reference empirical Gaussian PDF values on the same grid and
+        with the same shape as ``kde_vals_2d``.
+
+    Returns
+    -------
+    float
+        Approximation of the KL divergence :math:`D_{KL}(P \| Q)`.
     """
 
     # --- Flatten 2D grid values to 1D arrays
@@ -305,7 +504,33 @@ def calc_KLDivergence_2D(grid_points, kde_vals_2d, pdf_vals_2d):
 #############################################################################
 
 # --- Create grid and call plotting functions
-def run_2D_KDE_estimates_plot(data, bandwidthMatrix, x_idx, y_idx, kdeGridRes=150):
+def run_2D_KDE_estimates_plot(data, bandwidthMatrix, x_idx, y_idx, kdeGridRes=150, key_x=None, key_y=None, index=None):
+    """
+    Build a 2D grid, evaluate KDE and empirical PDF, and plot results.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Sample matrix of shape ``(n_samples, d)``.
+    bandwidthMatrix : numpy.ndarray
+        Full bandwidth matrix of shape ``(d, d)`` estimated from SCV.
+    x_idx : int
+        Index of the dimension in ``data`` to use for the x-axis.
+    y_idx : int
+        Index of the dimension in ``data`` to use for the y-axis.
+    kdeGridRes : int, optional
+        Number of grid points per axis when constructing the 2D grid,
+        by default 150.
+    key_x : str or None, optional
+        Flavour label for the x-axis. If ``None``, a generic label based
+        on ``x_idx`` is used.
+    key_y : str or None, optional
+        Flavour label for the y-axis. If ``None``, a generic label based
+        on ``y_idx`` is used.
+    index : int or None, optional
+        Grid index associated with the selected slice. If ``None``, a
+        placeholder is used in the plot title.
+    """
     
     print(f'Plotting Dimensions {x_idx} and {y_idx}')
 
@@ -332,10 +557,32 @@ def run_2D_KDE_estimates_plot(data, bandwidthMatrix, x_idx, y_idx, kdeGridRes=15
     pdf_vals_2d = sampleGaussian_2d.pdf(grid_points_2d).reshape(X.shape)
 
     # Plot with the 2D inputs    
-    plot_kde_vs_pdf_2d(data_2d, kde_vals_2d, pdf_vals_2d, grid_points_2d)
+    plot_kde_vs_pdf_2d(
+        data_2d,
+        kde_vals_2d,
+        pdf_vals_2d,
+        grid_points_2d,
+        key_x if key_x is not None else f"dim{x_idx}",
+        key_y if key_y is not None else f"dim{y_idx}",
+        index if index is not None else "?",
+    )
 
 # --- Main function 
 def main(kdeGridRes=150):
+    """
+    Run the full 2D KDE vs empirical PDF workflow for test flavours.
+
+    The function loads replica data, selects a pair of test flavours at
+    a fixed grid index, estimates the SCV bandwidth matrix, and
+    generates 2D visualisations along with a KL divergence diagnostic.
+
+    Parameters
+    ----------
+    kdeGridRes : int, optional
+        Number of grid points per axis when constructing the 2D grid,
+        by default 150.
+    """
+
     res_flav, res_ev = read_in_data()
 
     keys_ev = ['Sigma', 'V', 'V3', 'V8', 'T3', 'T8', 'c+', 'g', 'V15']
@@ -350,7 +597,16 @@ def main(kdeGridRes=150):
     # print(bandwidthMatrix)
 
     if bandwidthMatrix[0][0] >= 1e-8:
-        run_2D_KDE_estimates_plot(data, bandwidthMatrix, x_idx=0, y_idx=1)
+        run_2D_KDE_estimates_plot(
+            data,
+            bandwidthMatrix,
+            x_idx=0,
+            y_idx=1,
+            kdeGridRes=kdeGridRes,
+            key_x=keys_test[0],
+            key_y=keys_test[1],
+            index=index,
+        )
 
         # Create 2D grid only for selected dims
         grid_axes_2d = [np.linspace(np.min(data[:, dim]) - 1, np.max(data[:, dim]) + 1, kdeGridRes) for dim in range(2)]
@@ -369,7 +625,7 @@ def main(kdeGridRes=150):
         pdf_vals_2d = sampleGaussian_2d.pdf(grid_points_2d).reshape(kdeGridRes, kdeGridRes)
 
         # Plot with the 2D inputs    
-        plot_kde_vs_pdf_2d(data, kde_vals_2d, pdf_vals_2d, grid_points_2d)
+        plot_kde_vs_pdf_2d(data, kde_vals_2d, pdf_vals_2d, grid_points_2d, keys_test[0], keys_test[1], index)
         calc_KLDivergence_2D(grid_points_2d, kde_vals_2d, pdf_vals_2d)
 
     else:
