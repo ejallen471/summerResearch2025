@@ -33,7 +33,7 @@ import numpy as np
 from pathlib import Path
 from scipy.optimize import minimize
 from scipy.stats import multivariate_normal
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, effective_n_jobs
 from tqdm import tqdm
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf) 
@@ -385,43 +385,21 @@ def _single_covariance_task(idx1, idx2, flav1, flav2, flav_to_index, res_flav, n
 
     return i_pos, j_pos, covMatrix, covMatrix_empirical
 
-def _single_covariance_task_chunk(tasks, flav_to_index, res_flav, numberOfGridPoints, cov_full, cov_full_empirical, count_matrix, count_matrix_empirical):
+def _single_covariance_task_chunk(tasks, flav_to_index, res_flav, numberOfGridPoints):
     """
-    Process a chunk of tasks, accumulating results into memmaps.
+    Process a chunk of tasks and return the successful pairwise results.
 
-    Each task is a tuple (idx1, idx2, flav1, flav2). This function updates
-    the provided memmapped accumulation arrays in-place.
+    Workers only perform independent calculations. Accumulation into the
+    shared matrices is performed serially by the parent process so concurrent
+    workers never update the same diagonal entries.
     """
+    results = []
     for idx1, idx2, flav1, flav2 in tasks:
         res = _single_covariance_task(idx1, idx2, flav1, flav2, flav_to_index, res_flav, numberOfGridPoints)
-        if res is None:
-            continue
+        if res is not None:
+            results.append(res)
 
-        i, j, cov2x2, cov2x2_emp = res
-
-        # --- KDE accumulation
-        cov_full[i, i] += cov2x2[0, 0]
-        cov_full[j, j] += cov2x2[1, 1]
-        cov_full[i, j] += cov2x2[0, 1]
-        cov_full[j, i] = cov_full[i, j]
-
-        count_matrix[i, i] += 1
-        count_matrix[j, j] += 1
-        count_matrix[i, j] += 1
-        count_matrix[j, i] += 1
-
-        # --- Empirical accumulation
-        cov_full_empirical[i, i] += cov2x2_emp[0, 0]
-        cov_full_empirical[j, j] += cov2x2_emp[1, 1]
-        cov_full_empirical[i, j] += cov2x2_emp[0, 1]
-        cov_full_empirical[j, i] = cov_full_empirical[i, j]
-
-        count_matrix_empirical[i, i] += 1
-        count_matrix_empirical[j, j] += 1
-        count_matrix_empirical[i, j] += 1
-        count_matrix_empirical[j, i] += 1
-
-    return True  
+    return results
 
 def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints, n_jobs=-1, tmp_prefix="covariance_tmp", flush_every=10):
     """
@@ -455,18 +433,43 @@ def construct_covariance_matrix_parallel(keys_flav, res_flav, numberOfGridPoints
         if i_f1 < i_f2 or (i_f1 == i_f2 and idx1 <= idx2)
     ]
 
-    chunk_size = max(1, len(tasks) // (n_jobs * 4))
+    worker_count = effective_n_jobs(n_jobs)
+    chunk_size = max(1, len(tasks) // (worker_count * 4))
     task_chunks = [tasks[i:i + chunk_size] for i in range(0, len(tasks), chunk_size)]
 
     for batch_start in tqdm(range(0, len(task_chunks), flush_every), desc="Covariance Batches"):
         batch_chunks = task_chunks[batch_start:batch_start + flush_every]
 
-        Parallel(n_jobs=n_jobs)(
+        batch_results = Parallel(n_jobs=n_jobs)(
             delayed(_single_covariance_task_chunk)(
-                chunk, flav_to_index, res_flav, numberOfGridPoints,
-                cov_full, cov_full_empirical, count_matrix, count_matrix_empirical
+                chunk, flav_to_index, res_flav, numberOfGridPoints
             ) for chunk in batch_chunks
         )
+
+        # Only the parent process writes to the shared memmaps. This avoids
+        # lost updates when several pairwise results contribute to the same
+        # diagonal element.
+        for chunk_results in batch_results:
+            for i, j, cov2x2, cov2x2_emp in chunk_results:
+                cov_full[i, i] += cov2x2[0, 0]
+                cov_full[j, j] += cov2x2[1, 1]
+                cov_full[i, j] += cov2x2[0, 1]
+                cov_full[j, i] = cov_full[i, j]
+
+                count_matrix[i, i] += 1
+                count_matrix[j, j] += 1
+                count_matrix[i, j] += 1
+                count_matrix[j, i] += 1
+
+                cov_full_empirical[i, i] += cov2x2_emp[0, 0]
+                cov_full_empirical[j, j] += cov2x2_emp[1, 1]
+                cov_full_empirical[i, j] += cov2x2_emp[0, 1]
+                cov_full_empirical[j, i] = cov_full_empirical[i, j]
+
+                count_matrix_empirical[i, i] += 1
+                count_matrix_empirical[j, j] += 1
+                count_matrix_empirical[i, j] += 1
+                count_matrix_empirical[j, i] += 1
 
         cov_full.flush()
         cov_full_empirical.flush()
