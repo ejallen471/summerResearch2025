@@ -210,7 +210,7 @@ def main():
     """
     res_flav = read_flavour_data()
 
-    keys_flav = ['u','d','s','c','ubar','dbar','sbar','cbar','g']
+    keys_flav = ['d','u','s','c','dbar','ubar','sbar','cbar','g']
     numberOfGridPoints = 45
 
     mean_vector_kde, mean_vector_emp = construct_mean_vectors_1d(res_flav, keys_flav, numberOfGridPoints)

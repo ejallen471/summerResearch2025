@@ -96,7 +96,8 @@ def prepare_data_rangeIndices(res, keys, indices=None):
     keys : list of str
         Flavour keys to extract.
     indices : None, int, or array-like
-        If None, uses all 50 grid points. If int, uses range(0, indices+1).
+        If None, uses all 50 grid points. If int, treats it as the number
+        of grid points and uses indices in ``range(indices)``.
 
     Returns
     -------
@@ -110,9 +111,9 @@ def prepare_data_rangeIndices(res, keys, indices=None):
     if indices is None:
         indices = np.arange(50)
 
-    # If single int, treat as "0 to index" range
+    # If single int, treat it as the number of grid points to select.
     if isinstance(indices, int):
-        indices = np.arange(indices + 1)
+        indices = np.arange(indices)
 
     # Final shape = (num_replicas, num_keys * len(indices))
     data_array = np.empty((num_replicas, num_keys * len(indices)), dtype=float)

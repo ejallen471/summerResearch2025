@@ -45,6 +45,3 @@ patch.linewidth: 1
 patch.facecolor: 0,0.196078,0.372549
 patch.edgecolor: white
 patch.antialiased: True
-
-# Set default colour cycle: first two colours fixed
-axes.prop_cycle: cycler(color=['#692859', '#0f5248', '#1f77b4', '#ff7f0e', '#2ca02c'])

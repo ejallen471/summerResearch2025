@@ -142,13 +142,14 @@ def prepare_data(res, keys, indices=None):
     num_replicas = len(res)
     num_keys = len(keys)
 
+    # Default: use all 50 grid points
     if indices is None:
-        # Use all indices (0..49)
         indices = np.arange(50)
-    
-    # Multiple indices case, output 3D (num_replicas, num_keys, len(indices))
-    indices = np.array(indices)
-    data_array = np.empty((num_replicas, num_keys, len(indices)), dtype=float)
+
+    # Normalise to a NumPy array so we can always take len(indices)
+    indices = np.atleast_1d(np.array(indices, dtype=int))
+
+    data_array = np.empty((num_replicas, num_keys, indices.size), dtype=float)
     for i, replica in enumerate(res):
         for j, key in enumerate(keys):
             data_array[i, j, :] = replica[key][indices]
@@ -469,7 +470,7 @@ def calc_KLDivergence_2D(grid_points, kde_vals_2d, pdf_vals_2d):
     Returns
     -------
     float
-        Approximation of the KL divergence :math:`D_{KL}(P \| Q)`.
+        Approximation of the KL divergence :math:`D_{KL}(P \\| Q)`.
     """
 
     # --- Flatten 2D grid values to 1D arrays
@@ -589,10 +590,13 @@ def main(kdeGridRes=150):
     keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     
     # choose flavours and index here
-    keys_test = ['u', 'g']
-    index = 28
-    
-    data = prepare_data(res_flav, keys_test, index)
+    keys_test = ['s', 'dbar']
+    index = 32
+
+    # Prepare 3D array (replicas, flavours, indices) and then
+    # select the single index to obtain shape (n_replicas, 2)
+    data_3d = prepare_data(res_flav, keys_test, [index])
+    data = data_3d[:, :, 0]
     bandwidthMatrix = estimate_bandwidth_matrix_scv(data)
     # print(bandwidthMatrix)
 

@@ -288,7 +288,7 @@ def calc_covariance_KDE(data, bandwidthMatrix, n_samplesMC, d=2):
     # Moments
     # -----------------------------
     
-    zerothMoment = weight_sum
+    zerothMoment = np.mean(weights)
     firstMoment = (weights @ samples) / weight_sum
 
     centred = samples - firstMoment
@@ -444,6 +444,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 

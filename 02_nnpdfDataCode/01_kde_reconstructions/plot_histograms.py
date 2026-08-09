@@ -226,10 +226,10 @@ def main(plotting1D=True):
     # keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     
     # choose flavours to loop through 
-    keys_flav = ['d', 'g']
+    keys_flav = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
 
     # choose singe index between 1 and 50
-    index = 28
+    index = 10
 
     data = prepare_data(res_flav, keys_flav, index)
 

@@ -160,6 +160,58 @@ def read_in_xgrid(path=None):
     return np.loadtxt(path)
 
 #############################################################################
+### Calculate statistics (for diagnostics)
+#############################################################################
+
+def run_diagnostics(data, flavour):
+    """
+    Prints statistical diagnostics for the data and calculates robust plotting limits.
+    Returns: (robust_min, robust_max)
+    """
+    print(f"\n" + "="*40)
+    print(f" DIAGNOSTICS FOR FLAVOUR: {flavour}")
+    print(f"="*40)
+    
+    n_total = len(data)
+    if n_total == 0:
+        return -1, 1
+
+    # 1. Count Zeros and Near Zeros
+    n_exact_zeros = np.sum(data == 0.0)
+    threshold_tiny = 1e-6
+    n_tiny = np.sum(np.abs(data) < threshold_tiny)
+    n_neg_outliers = np.sum(data < -threshold_tiny)
+    
+    print(f"Total Data Points:    {n_total}")
+    print(f"Exact Zeros (0.0):    {n_exact_zeros}")
+    print(f"Near Zeros (< 1e-6):  {n_tiny}  ({n_tiny/n_total*100:.1f}%)")
+    print(f"Negative Outliers:    {n_neg_outliers}  ({n_neg_outliers/n_total*100:.1f}%)")
+    
+    # 2. Distribution Spread
+    percs = np.percentile(data, [0, 1, 25, 50, 75, 99, 100])
+    
+    print("-" * 20)
+    print("DISTRIBUTION SPREAD:")
+    print(f"Min (0%):   {percs[0]:.4e}")
+    print(f"Median:     {percs[3]:.4e}")
+    print(f"Max (100%): {percs[6]:.4e}")
+    print("-" * 20)
+
+    # 3. Calculate Robust Limits (IQR method)
+    iqr_lower = percs[2] # 25th
+    iqr_upper = percs[4] # 75th
+    
+    # Expand view to 3x the IQR
+    view_width = (iqr_upper - iqr_lower) * 3.0
+    if view_width == 0: view_width = 1e-9
+    
+    robust_min = percs[3] - view_width
+    robust_max = percs[3] + view_width
+    
+    print(f"Suggested Linear Plot Range: {robust_min:.4e} to {robust_max:.4e}")
+    return robust_min, robust_max
+
+#############################################################################
 ### Normalised differences (and plotting functions)
 #############################################################################
 
@@ -193,8 +245,7 @@ def plot_histogram(values, title, xlabel, bins=40, range=None, density=True,
     plt.xlabel(xlabel)
     plt.ylabel("Density" if density else "Counts")
     plt.title(title)
-    # Reference line at zero
-    plt.axvline(0.0, linestyle="--", color="black", linewidth=1.5)
+    plt.axvline(0.0, linestyle="--", color="black", linewidth=1.5) # dotted reference line at zero
     plt.grid(alpha=0.3)
     plt.tight_layout()
 
@@ -212,7 +263,7 @@ def plot_histogram(values, title, xlabel, bins=40, range=None, density=True,
     else:
         plt.close()
 
-def normalised_mean_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots=False):
+def normalised_variance_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots=False):
     """
     Compute and plot normalised mean differences between LHAPDF and KDE.
 
@@ -252,8 +303,8 @@ def normalised_mean_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots=False):
                 continue
 
             # Normalised error difference
-            num = LHAPDF[key]["std"][flav] - KDE[key]["std"][flav]
-            denom = np.sqrt(LHAPDF[key]["std"][flav]**2 + KDE[key]["std"][flav]**2)
+            num = LHAPDF[key]["std"][flav]**2 - KDE[key]["std"][flav]**2
+            denom = np.sqrt(LHAPDF[key]["std"][flav]**4 + KDE[key]["std"][flav]**4)
             diff = num / denom
 
             all_diffs.append(diff)
@@ -262,39 +313,35 @@ def normalised_mean_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots=False):
             all_diffs_flat = np.concatenate(all_diffs)
             plot_histogram(
                 values=all_diffs_flat,
-                title=f"Normalised Mean Error Difference – {flav}",
-                xlabel=r"$(\sigma_{LHAPDF}-\sigma_{KDE}) / \sqrt{\sigma_{LHAPDF}^2+\sigma_{KDE}^2}$",
-                range=(-3, 3),
-                output_dir="normalisedMeanDifference_plots",
-                filename=f"normalisedMeanDifference_{flav}.png",
+                title=f"Normalised Variance Difference – {flav}",
+                xlabel=r"$(\sigma_{LHAPDF}^2-\sigma_{KDE}^2) / \sqrt{\sigma_{LHAPDF}^4+\sigma_{KDE}^4}$",
+                # range=(-3, 3),
+                output_dir="normalisedVarianceDifference_plots",
+                filename=f"normalisedVarianceDifference_{flav}.png",
                 showPlots=showPlots
             )
 
-
-
-
-def normalised_difference_in_fluctuations(KDE, LHAPDF, XGRID, FLAVS,N_replicas=1000, showPlots=False):
+def variance_of_variance(KDE, LHAPDF, FLAVS, N_replicas=1000, showPlots=True):
     """
-    Compute and plot differences in standard deviations in units of the
-    expected statistical fluctuation (error on the error).
+    Plot the normalised difference of the variance-of-variance (VoV)
+    between KDE and LHAPDF.
 
-    The quantity plotted is::
+    The quantity plotted is:
 
-        (std_LHAPDF - std_KDE) /
-        sqrt(delta_std_LHAPDF^2 + delta_std_KDE^2)
+        (VoV_KDE - VoV_LHAPDF) / sqrt(VoV_KDE^2 + VoV_LHAPDF^2)
 
-    where::
-
-        delta_std = std / sqrt(2 * (N_replicas - 1))
+    which is bounded in [-1, 1].
     """
+
+    output_dir = "varianceOfVarianceDifference_plots"
+    os.makedirs(output_dir, exist_ok=True)
 
     for flav in FLAVS:
-        print(f"\n=== Plotting flavour: {flav} ===")
-
+        print(f"\n=== Processing flavour: {flav} ===")
         all_diffs = []
 
+        # --- 1. Compute VoV differences ---
         for key in sorted(LHAPDF.keys()):
-
             if key not in KDE:
                 continue
             if flav not in LHAPDF[key]["std"]:
@@ -305,32 +352,147 @@ def normalised_difference_in_fluctuations(KDE, LHAPDF, XGRID, FLAVS,N_replicas=1
             std_L = LHAPDF[key]["std"][flav]
             std_K = KDE[key]["std"][flav]
 
-            # Error on the error (Gaussian MC)
-            delta_L = std_L / np.sqrt(2 * (N_replicas - 1))
-            delta_K = std_K / np.sqrt(2 * (N_replicas - 1))
+            # Variance of the variance
+            vov_L = 2.0 * std_L**4 / (N_replicas - 1)
+            vov_K = 2.0 * std_K**4 / (N_replicas - 1)
 
-            denom = np.sqrt(delta_L**2 + delta_K**2)
+            denom = np.sqrt(vov_L**2 + vov_K**2)
 
-            # Safety guard
-            if not np.all(np.isfinite(denom)):
-                continue
+            with np.errstate(divide="ignore", invalid="ignore"):
+                diff = (vov_K - vov_L) / denom
 
-            diff = (std_L - std_K) / denom
+            diff = diff[np.isfinite(diff)]
             all_diffs.append(diff)
 
-        if all_diffs:
-            all_diffs_flat = np.concatenate(all_diffs)
+        if not all_diffs:
+            continue
 
-            plot_histogram(
-                values=all_diffs_flat,
-                title=f"Error Difference in Units of Fluctuation – {flav}",
-                xlabel=r"$(\sigma_{LHAPDF}-\sigma_{KDE}) / \sqrt{\delta\sigma_{LHAPDF}^2+\delta\sigma_{KDE}^2}$",
-                # range=(-5, 5),
-                output_dir="normalisedDifferenceInFluctuations_plots",
-                filename=f"normalisedDifferenceInFluctuations_{flav}.png",
-                showPlots=showPlots
-            )
+        all_diffs_flat = np.concatenate(all_diffs)
 
+        # --- 2. Plot ---
+        plt.figure(figsize=(8, 5))
+
+        plt.hist(
+            all_diffs_flat,
+            bins=80,
+            range=(-1.0, 1.0),
+            histtype="stepfilled",
+            alpha=0.8,
+            linewidth=0.6
+        )
+
+        plt.xlabel(
+            r"$(\mathrm{VoV}_{\mathrm{KDE}} - \mathrm{VoV}_{\mathrm{LHAPDF}})"
+            r"/\sqrt{\mathrm{VoV}_{\mathrm{KDE}}^2 + \mathrm{VoV}_{\mathrm{LHAPDF}}^2}$"
+        )
+        plt.ylabel("Counts")
+
+        plt.title(f"Normalised variance-of-variance difference – {flav}")
+        plt.grid(True, alpha=0.3)
+
+        filename = f"VoV_Difference_{flav}.png"
+        out_path = os.path.join(output_dir, filename)
+        plt.savefig(out_path, dpi=150)
+        print(f"Saved plot: {out_path}")
+
+        if showPlots:
+            plt.show()
+        else:
+            plt.close()
+
+def plot_vov_side_by_side(KDE, LHAPDF, FLAVS, N_replicas=1000, output_dir="VoV_SideBySide_plots", showPlots=False):
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    for flav in FLAVS:
+        print(f"\n=== Generating VoV comparison for: {flav} ===")
+
+        vov_kde_list = []
+        vov_lhapdf_list = []
+
+        # --- 1. Collect data ---
+        for key in sorted(LHAPDF.keys()):
+            if key not in KDE:
+                continue
+            if flav not in LHAPDF[key]["std"]:
+                continue
+            if flav not in KDE[key]["std"]:
+                continue
+
+            std_K = KDE[key]["std"][flav]
+            std_L = LHAPDF[key]["std"][flav]
+
+            vov_K = 2.0 * std_K**4 / (N_replicas - 1)
+            vov_L = 2.0 * std_L**4 / (N_replicas - 1)
+
+            vov_kde_list.append(vov_K)
+            vov_lhapdf_list.append(vov_L)
+
+        if not vov_kde_list:
+            continue
+
+        vov_kde_flat = np.concatenate(vov_kde_list)
+        vov_lhapdf_flat = np.concatenate(vov_lhapdf_list)
+
+        # --- 2. Common linear binning ---
+        all_data = np.concatenate([vov_kde_flat, vov_lhapdf_flat])
+
+        finite = np.isfinite(all_data)
+        if not np.any(finite):
+            continue
+
+        xmin = np.min(all_data[finite])
+        xmax = np.max(all_data[finite])
+
+        # Safety: avoid zero-width range
+        if xmin == xmax:
+            xmin = 0.0
+            xmax = xmax * 1.1 if xmax > 0 else 1.0
+
+        bins = np.linspace(-1, 1, 100)
+
+        # --- 3. Plotting ---
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+        axes[0].hist(
+            vov_kde_flat,
+            bins=bins,
+            density=True,
+            color= "#287085",
+            alpha=0.7,
+            linewidth=0.5
+        )
+
+        axes[0].set_title(f"KDE: VoV ({flav})")
+        axes[0].set_xlabel(r"$2\sigma_{\mathrm{KDE}}^4 / (N_{\mathrm{rep}} - 1)$")
+        axes[0].set_ylabel("Density")
+        axes[0].grid(alpha=0.3)
+        axes[0].set_xlim(-1,1)
+
+        axes[1].hist(
+            vov_lhapdf_flat,
+            bins=bins,
+            density=True,
+            color= "#722b5b",
+            alpha=0.7,
+            linewidth=0.5
+        )
+        axes[1].set_title(f"LHAPDF: VoV ({flav})")
+        axes[1].set_xlabel(r"$2\sigma_{\mathrm{LHAPDF}}^4 / (N_{\mathrm{rep}} - 1)$")
+        axes[1].grid(alpha=0.3)
+        axes[1].set_xlim(-1,1)
+
+        plt.tight_layout()
+
+        filename = f"VoV_{flav}.png"
+        out_path = os.path.join(output_dir, filename)
+        plt.savefig(out_path, dpi=150)
+        print(f"Saved: {out_path}")
+
+        if showPlots:
+            plt.show()
+        else:
+            plt.close()
 
 
 #############################################################################
@@ -403,9 +565,11 @@ def main(showPlots=False):
     FLAVS = ['u','d','s','ubar','dbar','sbar','c','cbar','g']
 
     # --- Run difference in error analytics 
-    normalised_mean_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots)
-    normalised_difference_in_fluctuations(KDE, LHAPDF, XGRID, FLAVS, N_replicas=1000, showPlots=showPlots)
-    pull_distribution(KDE, LHAPDF, FLAVS, showPlots)
+    # normalised_variance_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots)
+    # pull_distribution(KDE, LHAPDF, FLAVS, showPlots)
+    variance_of_variance(KDE, LHAPDF, FLAVS, N_replicas=1000, showPlots=showPlots)
+    plot_vov_side_by_side(KDE, LHAPDF, FLAVS, N_replicas=1000, output_dir="VoV_SideBySide_plots", showPlots=showPlots)
+
 
 
 if __name__ == "__main__":
