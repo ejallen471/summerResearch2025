@@ -62,8 +62,8 @@ Dependencies
 ------------
 
 - Python packages: `numpy`, `scipy`.
-- The repository contains a `requirements.txt` one level above this
-	directory; a convenient way to install required packages is:
+- The repository contains a `requirements.txt` one level above this directory
+- To install required packages use:
 
 ```bash
 pip install -r ../requirements.txt

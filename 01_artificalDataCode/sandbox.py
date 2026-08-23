@@ -1,3 +1,18 @@
+"""
+We have artificial 450-dimensional Gaussian data for testing blockwise KDE
+moment reconstruction.
+
+Run with the following command:
+
+python sandbox.py
+
+This file does the following:
+
+1. Generate artificial Gaussian samples and divide them into 2D blocks.
+2. Compare empirical and KDE means and covariance estimates for every block.
+3. Assemble and plot an example 450 x 450 covariance matrix.
+"""
+
 import numpy as np
 from scipy.stats import gaussian_kde, norm
 import warnings

@@ -1,21 +1,17 @@
 """
-Two-dimensional KDE and empirical PDF comparison for NNPDF replicas.
+We have NNPDF replica values for pairs of flavours and want to compare their
+two-dimensional empirical distribution with a KDE reconstruction.
 
-This module loads flavour-basis replica data, extracts two chosen parton
-flavours at a fixed grid index, and compares a Gaussian kernel density
-estimate (KDE) to the empirical Gaussian PDF fit to the same samples.
+Run with the following command:
 
-The main workflow is:
+python KDE_scatterGraph_2D.py
 
-- load serialised replica data from the 00_data directory,
-- prepare a two-dimensional sample array for the selected flavours,
-- estimate a full bandwidth matrix via smoothed cross-validation (SCV),
-- evaluate the KDE and empirical Gaussian on a 2D grid,
-- visualise samples with overlaid PDF and KDE contours,
-- optionally compute the 2D KL divergence between KDE and empirical PDF.
+This file does the following:
 
-Utility helpers are also provided for 1D diagnostic histograms and for
-finding the custom Matplotlib style file used across the project.
+1. Read replica data and extract a selected pair of variables.
+2. Estimate a 2D KDE bandwidth matrix using smoothed cross-validation.
+3. Plot the samples, empirical Gaussian and KDE contours and optionally
+   calculate their 2D KL divergence.
 """
 
 #############################################################################
@@ -637,6 +633,5 @@ def main(kdeGridRes=150):
 
 if __name__ == "__main__":
     main()
-
 
 

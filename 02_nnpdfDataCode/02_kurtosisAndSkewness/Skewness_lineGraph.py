@@ -1,14 +1,16 @@
 """
-Plot skewness vs grid index for all flavours.
+We have NNPDF replica distributions and want to study how empirical and
+KDE-based skewness vary across x-grid indices.
 
-For every flavour and grid index it also estimates bootstrap errors for
-both estimators. The final output is a single figure with two line
-graphs (subplots):
+Run with the following command:
 
-* Left: KDE-based skewness vs grid index with error bars for all
-    flavours.
-* Right: Empirical skewness vs grid index with error bars for
-    all flavours.
+python Skewness_lineGraph.py
+
+This file does the following:
+
+1. Read replica data and calculate KDE and empirical skewness at each index.
+2. Estimate uncertainty on both skewness calculations using bootstrap samples.
+3. Plot skewness against grid index with error bars for every flavour.
 """
 
 import pickle
@@ -500,4 +502,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

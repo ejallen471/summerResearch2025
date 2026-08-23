@@ -4,6 +4,9 @@ Obtained by looking at NNPDF40_nnlo_as_01180_1000.info then taking the AlphaS_Qs
 
 (file found at /opt/anaconda3/share/LHAPDF/NNPDF40_nnlo_as_01180_1000/NNPDF40_nnlo_as_01180_1000.info)
 
+Note: The AlphaS_Qs list contains 50 entries, but Q = 4.92 GeV appears twice because it marks an LHAPDF interpolation-subgrid boundary at the bottom-quark threshold.
+Hence there are 49 unique Q values used for evaluation.
+
 AlphaS_Qs: [1.6500000e+00, 1.7874388e+00, 1.9429053e+00, 2.1193749e+00, 2.3204100e+00,
   2.5502944e+00, 2.8142025e+00, 3.1184122e+00, 3.4705775e+00, 3.8800751e+00, 4.3584516e+00,
   4.9200000e+00, 4.9200000e+00, 5.5493622e+00, 6.2897452e+00, 7.1650687e+00, 8.2052867e+00,

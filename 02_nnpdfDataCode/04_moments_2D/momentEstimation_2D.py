@@ -1,3 +1,18 @@
+"""
+We have pairs of NNPDF replica variables and want to compare their 2D KDE and
+empirical moments with bootstrap uncertainties.
+
+Run with the following command:
+
+python momentEstimation_2D.py
+
+This file does the following:
+
+1. Read replica data and prepare selected two-dimensional samples.
+2. Estimate SCV bandwidth matrices and calculate KDE means and covariances.
+3. Compare with empirical moments and estimate errors using bootstrap samples.
+"""
+
 #############################################################################
 
 # Calculate the moments using the 2D KDE PDF reconstruction and empirical distribution
@@ -444,5 +459,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

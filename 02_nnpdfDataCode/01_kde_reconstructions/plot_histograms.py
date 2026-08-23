@@ -1,13 +1,16 @@
 """
-Plot raw 1D histograms for selected NNPDF replica flavours.
+We have NNPDF replica values and want a simple histogram view of their raw
+one-dimensional distributions without KDE reconstruction.
 
-This module loads replica data in the flavour and evolution bases,
-extracts chosen parton flavours at a fixed grid index, and visualises the
-resulting replica distributions as normalised histograms. For each
-histogram an empirical Gaussian PDF, fitted from the sample mean and
-standard deviation, is overlaid for comparison. No KDE is used here; this
-script is intended as a quick diagnostic view of the underlying replica
-spread.
+Run with the following command:
+
+python plot_histograms.py
+
+This file does the following:
+
+1. Read flavour- and evolution-basis replica data from 00_data.
+2. Extract selected flavours at a fixed x-grid index.
+3. Plot normalised histograms with empirical Gaussian curves.
 """
 
 #############################################################################
@@ -243,6 +246,5 @@ def main(plotting1D=True):
 
 if __name__ == "__main__":
     main()
-
 
 

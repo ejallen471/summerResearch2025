@@ -1,10 +1,16 @@
 """
-Compute and compare 1D excess kurtosis from replicas.
+We have NNPDF replica distributions and want to compare their empirical and
+KDE-based one-dimensional excess kurtosis values.
 
-This script extracts 1D samples for each chosen flavour and grid index,
-estimates excess kurtosis in two ways – directly from the samples and
-from a 1D Gaussian KDE – and finally plots two histograms collecting the
-results across all flavours/indices.
+Run with the following command:
+
+python kurtosis_calcHistogram.py
+
+This file does the following:
+
+1. Read replica data for all selected flavours and x-grid indices.
+2. Calculate empirical and KDE excess kurtosis values.
+3. Plot histograms collecting the two kurtosis estimates.
 """
 
 #############################################################################
@@ -429,6 +435,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 

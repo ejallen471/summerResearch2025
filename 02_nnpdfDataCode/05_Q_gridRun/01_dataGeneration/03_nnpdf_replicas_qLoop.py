@@ -1,29 +1,18 @@
 """
- LHAPDF uses the Particle Data Group (PDG) numbering scheme
- to enumerate particle species. The full list is available here:
-   https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
- For our purpose, we only need parton flavours, which are:
- 21:   gluon
- 1:    down
- 2:    up
- 3:    strange
- 4:    charm
- 5:    bottom
- 6:    top
- Anti-particle (with exception of the gluon of course) are numbered using
- negative numbers (-1 for anti-down, -2 for anti-up, etc...). This ordering
- is known as flavour basis.
+We have the original NNPDF4.0 LHAPDF set and want to evaluate all replicas on
+the selected x-grid at every stored Q value.
 
- In fitting PDF, one usally rotates the flavour basis into the so-called
- evolution basis. The reeason is that this basis diagonalises the evolution
- equations (knwon as DGLAP equations) needed to determine PDFs from data.
- Each element of the evolution basis is a linear combination of the flavours
- above. Note that this map is not unique, and there might be different definitions
- of evolution basis. In NNPDF, we use the definition shown at this link:
-    https://eko.readthedocs.io/en/latest/theory/FlavorSpace.html#qcd-evolution
+Run with the following command:
 
-Since LHAPDF delivers PDF sets in flavour basis, we will use this map
-to rotate flavours into the evolution basis.
+python 03_nnpdf_replicas_qLoop.py
+
+This file does the following:
+
+1. Read the Q grid from 00_data and load the original NNPDF4.0 members through
+   LHAPDF.
+2. Evaluate the required parton flavours at every x and Q grid point.
+3. Rotate flavour-basis values into the NNPDF evolution basis and save both
+   bases as separate pickle files for each Q.
 """
 
 import numpy as np
@@ -36,9 +25,12 @@ rc('text',usetex=True)
 import pickle
 from pathlib import Path
 
-SERIALIZATION_DIR = Path("./")
+DATA_DIR = Path(__file__).resolve().parents[2] / "00_data"
+SERIALIZATION_DIR = DATA_DIR
 FLAV_PATH = SERIALIZATION_DIR / "flavour_basis.pkl"
 EV_PATH = SERIALIZATION_DIR / "evolution_basis.pkl"
+FLAVOUR_OUTPUT_DIR = DATA_DIR / "flavourBasis"
+EVOLUTION_OUTPUT_DIR = DATA_DIR / "evolutionBasis"
 
 # where is XGRID from?
 XGRID = np.array(
@@ -105,7 +97,7 @@ PID_FLAVS = {
 
 
 # Read the Q values file - measured in GeV
-with open("02_Q_values.txt", "r") as f:
+with open(DATA_DIR / "02_Q_values.txt", "r") as f:
     content = f.read()
 
 Q_list = [float(x) for x in content.replace(",", " ").split()]
@@ -171,6 +163,8 @@ def main():
     
     else:
         print("Computing data...")
+        FLAVOUR_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        EVOLUTION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         # Load pdf set
         # pdf_set = lh.mkPDFs("NNPDF31_nnlo_as_0118") # 3.1 version nnpdf
         pdf_set = lh.mkPDFs("NNPDF40_nnlo_as_01180_1000") # 4.0 version nnpdf
@@ -184,19 +178,19 @@ def main():
             res_ev = rotate_to_ev(res_flav)
 
             # Serialize data
-            with open(f'flavour_basis_{Q:.3e}.pkl', 'wb') as f:
+            with open(FLAVOUR_OUTPUT_DIR / f'flavour_basis_{Q:.3e}.pkl', 'wb') as f:
                 pickle.dump(res_flav, f)
 
-            with open(f'evolution_basis_{Q:.3e}.pkl', 'wb') as f:
+            with open(EVOLUTION_OUTPUT_DIR / f'evolution_basis_{Q:.3e}.pkl', 'wb') as f:
                 pickle.dump(res_ev, f)
         
     
     # =========== PLOTS IN EVOLUTION BASIS =================
     fig, axes = plt.subplots(3, 3, figsize=(15, 12))
     fig.suptitle('PDFs in evolution basis', fontsize=16, fontweight='bold')
-    flav_order = ['u', 'd', 's', 'ubar', 'dbar', 'sbar', 'c', 'cbar', 'g']
-    y_labels = [r'$xu(x)$', r'$xd(x)$', r'$xs(x)$', r'$x \bar{u}(x)$', r'$x \bar{d}(x)$', r'$x \bar{s}(x)$', r'$xc$', r'$x \bar{c}(x)$', r'$xg$']
-    y_lims = [(0.35, 0.80), (0.30, 0.6), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (-0.06, 0.03), (-0.06, 0.03), (0.5, 3.5)]
+    flav_order = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
+    y_labels = [r'$xd(x)$', r'$xu(x)$', r'$xs(x)$', r'$xc$', r'$x \bar{d}(x)$', r'$x \bar{u}(x)$', r'$x \bar{s}(x)$', r'$x \bar{c}(x)$', r'$xg$']
+    y_lims = [(0.30, 0.6), (0.35, 0.80), (0.0, 0.55), (-0.06, 0.03), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (-0.06, 0.03), (0.5, 3.5)]
     axes_flat = axes.flatten()
 
     for ax, flav, y_label, y_lim in zip(axes_flat, flav_order, y_labels, y_lims):

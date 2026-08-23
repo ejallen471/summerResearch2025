@@ -1,21 +1,18 @@
 """
-Functions to generate PDF replicas and save results.
+We have a KDE mean vector and covariance matrix for every Q and want to draw
+fixed-Q Gaussian PDF replicas for reconstruction diagnostics.
 
-This module loads covariance, correlation and mean-vector outputs
-produced by the covariance reconstruction pipeline and uses them to
-generate multivariate normal replicas. It computes per-flavour means
-and standard deviations on the standard 45-point `x` grid and saves
-those results to CSV files. Plotting helpers are provided but only
-executed when the module is run as a script.
+Run with the following command:
 
-Notes
------
-- Expects folders named `flavour_basis_<Q>` under the parent
-    `02_covarianceGeneration` directory with files:
-    `covariance_kde.csv`, `correlation_kde.csv`, `mean_vector_kde.csv`.
-- Uses `pythonStyle.mplstyle` from the repository root for plotting
-    aesthetics.
+python pdfGenerator.py
 
+This file does the following:
+
+1. Read every flavour_basis_<Q> mean, covariance and correlation file.
+2. Make each covariance positive semidefinite and draw multivariate-normal
+   replicas at that fixed Q.
+3. Calculate and save per-flavour KDE means and standard deviations and create
+   comparison plots.
 """
 
 import os
@@ -242,39 +239,39 @@ def plot_mean_std(mean, std, xgrid, folder_name, flavours=None):
         Folder name used to compose the output filename.
     flavours : sequence, optional
         Labels for the nine flavours; default ordering is
-        ``['u','d','s','ubar','dbar','sbar','c','cbar','g']``.
+        ``['d','u','s','c','dbar','ubar','sbar','cbar','g']``.
     """
 
     if flavours is None:
-        flavours = ['u', 'd', 's', 'ubar', 'dbar', 'sbar', 'c', 'cbar', 'g']
+        flavours = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
 
     fig, axes = plt.subplots(3, 3, figsize=(15, 12))
     fig.suptitle('PDFs in Flavour Basis', fontsize=16, fontweight='bold')
     axes_flat = axes.flatten()
 
     # Order and labelling of flavours in the 3x3 grid
-    plot_order = ['u', 'd', 's', 'ubar', 'dbar', 'sbar', 'c', 'cbar', 'g']
+    plot_order = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     index_map = [flavours.index(f) for f in plot_order]
 
     y_labels = [
-        r'$xu(x)$',
         r'$xd(x)$',
+        r'$xu(x)$',
         r'$xs(x)$',
-        r'$x \bar{u}(x)$',
-        r'$x \bar{d}(x)$',
-        r'$x \bar{s}(x)$',
         r'$xc$',
+        r'$x \bar{d}(x)$',
+        r'$x \bar{u}(x)$',
+        r'$x \bar{s}(x)$',
         r'$x \bar{c}(x)$',
         r'$xg$',
     ]
     y_lims = [
-        (0.35, 0.80),
         (0.30, 0.6),
-        (0.0, 0.55),
-        (0.0, 0.55),
-        (0.0, 0.55),
+        (0.35, 0.80),
         (0.0, 0.55),
         (-0.06, 0.15),
+        (0.0, 0.55),
+        (0.0, 0.55),
+        (0.0, 0.55),
         (-0.06, 0.15),
         (0.5, 3.5),
     ]
@@ -330,7 +327,7 @@ def main():
         5.3976e-01, 6.0147e-01, 6.6481e-01
     ])
 
-    flavours = ['u', 'd', 's','c', 'ubar', 'dbar', 'sbar',  'cbar', 'g']
+    flavours = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
 
     base_dir = os.path.join("..", "02_covarianceGeneration")
     data_store = readInFiles(base_dir)

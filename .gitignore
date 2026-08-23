@@ -1,0 +1,6 @@
+/reports
+/.venv/
+.DS_Store
+__pycache__/
+*.py[cod]
+02_nnpdfDataCode/06_convertToLhapdfFormat/output/

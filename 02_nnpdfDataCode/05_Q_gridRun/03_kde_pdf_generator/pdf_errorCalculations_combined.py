@@ -1,9 +1,16 @@
 """
-Combined PDF Uncertainty Analysis.
+We have KDE-versus-original uncertainty diagnostics for many flavours and Q
+values and want combined plots showing all flavours together.
 
-Produces aggregated histograms for Pulls, Variance Differences, and
-Variance of Variances, plotting all flavours on shared axes for comparison
-with shaded histograms.
+Run with the following command:
+
+python pdf_errorCalculations_combined.py
+
+This file does the following:
+
+1. Read the KDE and original-LHAPDF mean and standard-deviation CSV files.
+2. Calculate combined pull, variance-difference and variance-of-variance data.
+3. Plot and save aggregated shaded histograms for all flavours.
 """
 
 import os
@@ -279,7 +286,7 @@ def plot_vov_side_by_side(kde_map, lha_map, title, xlabel, output_name, log_y=Tr
 #############################################################################
 
 def main():
-    FLAVS = ['u','d','s','ubar','dbar','sbar','c','cbar','g']
+    FLAVS = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
     
     kde_data = read_in_kde()
     lhapdf_data = read_in_lhapdf()

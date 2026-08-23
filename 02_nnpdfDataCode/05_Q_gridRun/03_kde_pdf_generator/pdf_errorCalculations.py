@@ -1,14 +1,17 @@
 """
-Helpers to compare KDE-derived and LHAPDF-derived PDF uncertainties.
+We have per-flavour KDE and original-LHAPDF means and standard deviations and
+want to quantify their uncertainty differences.
 
-This module loads per-flavour mean and standard-deviation CSVs produced
-by the KDE pipeline and by LHAPDF evaluations, and provides plotting
-utilities that compare the two sets of uncertainties. The primary
-comparisons are the normalised difference in standard deviation and the
-difference expressed in units of expected statistical fluctuation.
+Run with the following command:
 
-The functions in this file are intended for interactive inspection and
-are executed when the module is run as a script.
+python pdf_errorCalculations.py
+
+This file does the following:
+
+1. Read the KDE and original-LHAPDF mean and standard-deviation CSV files.
+2. Calculate pulls, normalised variance differences and variance-of-variance
+   diagnostics for each flavour and Q.
+3. Save individual diagnostic histograms and comparison plots.
 """
 
 import os
@@ -562,7 +565,7 @@ def main(showPlots=False):
     KDE = read_in_kde()
     LHAPDF = read_in_lhapdf()
     XGRID = read_in_xgrid()
-    FLAVS = ['u','d','s','ubar','dbar','sbar','c','cbar','g']
+    FLAVS = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
 
     # --- Run difference in error analytics 
     # normalised_variance_difference(KDE, LHAPDF, XGRID, FLAVS, showPlots)

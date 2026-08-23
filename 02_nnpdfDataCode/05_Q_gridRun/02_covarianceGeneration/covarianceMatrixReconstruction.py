@@ -1,29 +1,18 @@
 """
-covarianceMatrixReconstruction.py
+We have NNPDF replicas at one fixed Q and want to reconstruct their complete
+KDE and empirical covariance and correlation matrices.
 
-Construct covariance and correlation matrices from NNDPF replica data.
+Run from a flavour_basis_<Q> folder with the following command:
 
-This module provides functions to:
-- read serialised replica data
-- prepare data for pairwise 2D KDE and empirical calculations
-- estimate 2x2 KDE bandwidth matrices via smooth cross-validation (SCV)
-- compute KDE-based covariance estimates using importance-sampling Monte Carlo
-- assemble full covariance and correlation matrices in parallel and store
-    intermediate results in memory-mapped files and final CSV outputs
+python ../covarianceMatrixReconstruction.py
 
-Outputs
--------
-- CSVs: 
-    `covariance_kde.csv`, 
-    `correlation_kde.csv`,
-    `covariance_empirical.csv`, 
-    `correlation_empirical.csv`.
-- Optional memmap files: 
-    `<tmp_prefix>_cov_kde.dat`,
-    `<tmp_prefix>_cov_emp.dat`, 
-    `<tmp_prefix>_count_kde.dat`,
-    `<tmp_prefix>_count_emp.dat`.
+This file does the following:
 
+1. Read the fixed-Q flavour- and evolution-basis replica pickle files.
+2. Estimate pairwise 2D KDE bandwidths and covariances using importance
+   sampling, with independent calculations distributed across worker processes.
+3. Assemble the 405 x 405 matrices in the parent process and save KDE and
+   empirical covariance and correlation CSV files.
 """
 
 import pickle

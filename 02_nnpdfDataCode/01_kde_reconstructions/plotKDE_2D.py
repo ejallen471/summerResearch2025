@@ -1,11 +1,16 @@
 """
-Plot 2D KDE probability density functions for selected flavours.
+We have NNPDF replica values for two selected variables and want to visualise
+their two-dimensional KDE probability density.
 
-This script implements the same 2D KDE construction (SCV bandwidth
-selection and Gaussian kernel) as used in the 2D moments code, but it is
-entirely self-contained and focuses purely on visualisation: it plots
-contour lines of the KDE probability density function, optionally
-alongside a Gaussian fit to the samples.
+Run with the following command:
+
+python plotKDE_2D.py
+
+This file does the following:
+
+1. Read the replica data and prepare a selected pair of variables.
+2. Estimate a positive-definite 2D bandwidth matrix using SCV.
+3. Evaluate and plot KDE contours, optionally alongside an empirical Gaussian.
 """
 
 import pickle

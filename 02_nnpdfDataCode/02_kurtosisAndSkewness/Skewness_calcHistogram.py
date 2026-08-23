@@ -1,10 +1,16 @@
 """
-Compute and compare 1D skewness from replicas.
+We have NNPDF replica distributions and want to compare their empirical and
+KDE-based one-dimensional skewness values.
 
-This script extracts 1D samples for each chosen flavour and grid index,
-estimates skewness in two ways – directly from the samples and from a
-1D Gaussian KDE – and finally plots two histograms collecting the
-results across all flavours/indices.
+Run with the following command:
+
+python Skewness_calcHistogram.py
+
+This file does the following:
+
+1. Read replica data for all selected flavours and x-grid indices.
+2. Calculate empirical and KDE skewness values.
+3. Plot histograms collecting the two skewness estimates.
 """
 
 #############################################################################
@@ -431,6 +437,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 

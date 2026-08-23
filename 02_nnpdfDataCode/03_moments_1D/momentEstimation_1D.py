@@ -1,4 +1,19 @@
 
+"""
+We have one-dimensional NNPDF replica distributions and want to compare their
+KDE and empirical moments with bootstrap uncertainties.
+
+Run with the following command:
+
+python momentEstimation_1D.py
+
+This file does the following:
+
+1. Read replica data and select flavours and x-grid indices.
+2. Select 1D KDE bandwidths and calculate KDE and empirical moments.
+3. Bootstrap both calculations and report their estimated uncertainties.
+"""
+
 #############################################################################
 
 # Calculate the first four standardised moments (zeroth, mean, variance,
@@ -530,6 +545,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 

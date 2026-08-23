@@ -1,21 +1,16 @@
 """
-plot_matrix_from_csv.py
+We have fixed-Q covariance and correlation CSV files and want side-by-side
+visual comparisons of the KDE and empirical matrices.
 
-Small helper script to visualise covariance and correlation matrices
-that are saved as CSV files by the reconstruction pipeline.
+Run from a flavour_basis_<Q> folder with the following command:
 
-Behaviour
----------
-- Loads    
-        `correlation_kde.csv`, 
-        `correlation_empirical.csv`,
-        `covariance_kde.csv`  
-        `covariance_empirical.csv` 
-    from the current working directory, cleans/clamps invalid values 
-    and writes comparison PNG images 
-        `correlation_comparison.png` 
-        `covariance_comparison.png`
+python ../plot_matrix_from_csv.py
 
+This file does the following:
+
+1. Read the KDE and empirical covariance and correlation CSV files.
+2. Clean non-finite covariance entries and clamp correlations to [-1, 1].
+3. Save covariance_comparison.png and correlation_comparison.png.
 """
 
 import numpy as np
@@ -140,4 +135,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

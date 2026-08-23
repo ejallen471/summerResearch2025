@@ -1,24 +1,18 @@
 """
-meanVecReconstruction.py
+We have NNPDF replicas at one fixed Q and want to reconstruct their flattened
+KDE and empirical mean vectors.
 
-Build 1D mean vectors per flavour and grid point for KDE-based and
-empirical reconstructions.
+Run from a flavour_basis_<Q> folder with the following command:
 
-This module provides:
-- utilities to read flavour replica data;
-- a simple 1D bandwidth estimator (`estimate_bandwidth_matrix_scv_1d`);
-- a numba-accelerated batch KDE PDF evaluator used by the 1D
-    importance-sampling estimator;
-- `construct_mean_vectors_1d` which returns both KDE and empirical mean
-    vectors and writes them to CSV when run as a script.
+python ../meanVecReconstruction.py
 
-Outputs
--------
-- `mean_vector_kde.csv` — mean vector estimated by 1D KDE + importance
-    sampling.
-- `mean_vector_empirical.csv` — empirical mean vector computed directly
-    from replicas.
+This file does the following:
 
+1. Read the fixed-Q flavour-basis replica pickle file.
+2. Estimate a 1D KDE mean for every flavour and x-grid point using importance
+   sampling, and calculate the corresponding empirical means.
+3. Flatten and save the results as mean_vector_kde.csv and
+   mean_vector_empirical.csv.
 """
 
 import pickle

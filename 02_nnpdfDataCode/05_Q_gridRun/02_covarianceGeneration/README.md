@@ -5,7 +5,7 @@ Overview
 
 This directory contains the code and helpers used to reconstruct covariance
 and correlation matrices from NNDPF replica data for different values of
-`Q` (see folder 01_dataGeneration how how these were determined). 
+`Q` (see `../../00_data/01_Q_ValuesExplained.txt` for how these were determined).
 The implementation supports two reconstruction routes:
 
 - a KDE-based reconstruction
@@ -141,5 +141,3 @@ file `pythonStyle.mplstyle` located at the project root.
 Ensure this file is present when generating plots (the plotting script references
 it with a relative path: `../../pythonStyle.mplstyle`).
 
-
- 

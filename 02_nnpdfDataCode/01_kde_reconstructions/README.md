@@ -40,10 +40,11 @@ Key implementation details
 
 The dataset consists of 1000 NNPDF replicas, each evaluated at 50 grid points in the momentum fraction \(x\) space. Each replica is stored as a Python dictionary mapping parton flavour keys to 1D NumPy arrays of length 50.  
 
-The available flavours are:  
-- `u` (up), `d` (down), `c` (charm), `s` (strange)  
-- `ubar` (anti-up), `dbar` (anti-down), `cbar` (anti-charm), `sbar` (anti-strange) 
-- `g` (gluon)  
+The canonical flavour order is:
+
+- `d` (down), `u` (up), `s` (strange), `c` (charm)
+- `dbar` (anti-down), `ubar` (anti-up), `sbar` (anti-strange), `cbar` (anti-charm)
+- `g` (gluon)
 
 For KDE analysis:  
 - `prepare_data()` extracts the replica values for selected flavours at a given grid index (1D) or multiple indices (higher-dimensional arrays).  
@@ -146,4 +147,3 @@ Further notes
 
 - All plotting modules attempt to locate `pythonStyle.mplstyle` by walking one level upward from the script location; keep that file in the top‑level `02_nnpdfDataCode` directory so styles resolve correctly.
 - The data files `flavour_basis.pkl` and `evolution_basis.pkl` are expected in `../00_data/` relative to this directory.
-

@@ -1,29 +1,17 @@
 """
- LHAPDF uses the Particle Data Group (PDG) numbering scheme
- to enumerate particle species. The full list is available here:
-   https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
- For our purpose, we only need parton flavours, which are:
- 21:   gluon
- 1:    down
- 2:    up
- 3:    strange
- 4:    charm
- 5:    bottom
- 6:    top
- Anti-particle (with exception of the gluon of course) are numbered using
- negative numbers (-1 for anti-down, -2 for anti-up, etc...). This ordering
- is known as flavour basis.
+We have the original NNPDF4.0 LHAPDF set and want reference mean and standard
+deviation values for comparison with the KDE reconstruction.
 
- In fitting PDF, one usally rotates the flavour basis into the so-called
- evolution basis. The reeason is that this basis diagonalises the evolution
- equations (knwon as DGLAP equations) needed to determine PDFs from data.
- Each element of the evolution basis is a linear combination of the flavours
- above. Note that this map is not unique, and there might be different definitions
- of evolution basis. In NNPDF, we use the definition shown at this link:
-    https://eko.readthedocs.io/en/latest/theory/FlavorSpace.html#qcd-evolution
+Run with the following command:
 
-Since LHAPDF delivers PDF sets in flavour basis, we will use this map
-to rotate flavours into the evolution basis.
+python generate_reference_statistics.py
+
+This file does the following:
+
+1. Load all original NNPDF4.0 uncertainty members through LHAPDF.
+2. Evaluate the required flavours on the 45-point x-grid at every Q and rotate
+   values into the evolution basis when required.
+3. Save per-flavour reference mean and standard-deviation CSV files and plots.
 """
 
 import numpy as np
@@ -169,7 +157,7 @@ def plot_flavs(pdf_flav):
     return fig, axs
 
 
-FLAV_ORDER = ['u', 'd', 's', 'ubar', 'dbar', 'sbar', 'c', 'cbar', 'g']
+FLAV_ORDER = ['d', 'u', 's', 'c', 'dbar', 'ubar', 'sbar', 'cbar', 'g']
 
 def save_statistics(Q, res_flav):
 
@@ -231,10 +219,10 @@ def main():
 
         fig, axes = plt.subplots(3, 3, figsize=(15, 12))
         fig.suptitle('PDFs in Flavour Basis', fontsize=16, fontweight='bold')
-        flav_order = ['u', 'd', 's', 'ubar', 'dbar', 'sbar', 'c', 'cbar', 'g']
-        y_labels = [r'$xu(x)$', r'$xd(x)$', r'$xs(x)$', r'$x \bar{u}(x)$', r'$x \bar{d}(x)$', r'$x \bar{s}(x)$', r'$xc$', r'$x \bar{c}(x)$', r'$xg$']
-        # y_labels = [r'$u$', r'$d$', r'$s$', r'$\bar{u}$', r'$\bar{d}$', r'$\bar{s}$', r'$c$', r'$\bar{c}$', r'$g$']
-        y_lims = [(0.35, 0.80), (0.30, 0.6), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (-0.06, 0.15), (-0.06, 0.15), (0.5, 3.5)]
+        flav_order = FLAV_ORDER
+        y_labels = [r'$xd(x)$', r'$xu(x)$', r'$xs(x)$', r'$xc$', r'$x \bar{d}(x)$', r'$x \bar{u}(x)$', r'$x \bar{s}(x)$', r'$x \bar{c}(x)$', r'$xg$']
+        # y_labels = [r'$d$', r'$u$', r'$s$', r'$c$', r'$\bar{d}$', r'$\bar{u}$', r'$\bar{s}$', r'$\bar{c}$', r'$g$']
+        y_lims = [(0.30, 0.6), (0.35, 0.80), (0.0, 0.55), (-0.06, 0.15), (0.0, 0.55), (0.0, 0.55), (0.0, 0.55), (-0.06, 0.15), (0.5, 3.5)]
         
         axes_flat = axes.flatten()
 

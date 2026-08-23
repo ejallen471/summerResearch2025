@@ -1,11 +1,17 @@
 """
-Plot 1D histograms with empirical and KDE PDFs for NNPDF replicas.
+We have NNPDF replica values and want to compare their one-dimensional
+empirical distributions with KDE reconstructions.
 
-This module loads replica data in the flavour basis, constructs one-dimensional
-kernel density estimates (KDEs) for chosen parton flavours at a fixed grid
-index, and visualises the results as histograms with the empirical Gaussian
-PDF and KDE estimate superimposed. It also provides utilities for bandwidth
-selection and simple KL-divergence diagnostics.
+Run with the following command:
+
+python KDE_histogram_1D.py
+
+This file does the following:
+
+1. Read the flavour- and evolution-basis replica data from 00_data.
+2. Select flavours and x-grid indices and estimate a 1D KDE bandwidth.
+3. Plot histograms with empirical Gaussian and KDE curves and calculate
+   KL-divergence diagnostics.
 """
 
 #############################################################################
@@ -478,6 +484,5 @@ def main(plotting1D=True, KL_divergence=True):
 
 if __name__ == "__main__":
     main()
-
 
 
