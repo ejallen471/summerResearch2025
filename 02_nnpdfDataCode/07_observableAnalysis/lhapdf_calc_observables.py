@@ -17,7 +17,7 @@ In this file we do the following
 3. Construct the proton convolution and light-flavour channel mask.
 4. Calculate the observable for one PDF member.
 5. Calculate the observable for all requested members of a PDF ensemble.
-6. Calculate the ensemble mean, standard deviation and percentile interval.
+6. Calculate the ensemble mean and sample standard deviation.
 7. Return the bin information needed by the plotting notebook.
 """
 
@@ -37,20 +37,17 @@ from pineappl.grid import Grid
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Keeping the paths relative to this file means the notebook can be opened
-# from a different working directory without losing the data or style files.
+# Build paths from this file so it does not matter where the notebook is run
 STYLE_PATH = SCRIPT_DIR.parent / "pythonStyle.mplstyle"
 GRID_PATH = SCRIPT_DIR / "LHCB_DY_8TEV.pineappl.lz4"
 RECONSTRUCTED_SET_DIR = SCRIPT_DIR.parent / "06_convertToLhapdfFormat" / "output"
 
-# These are the short local names used in this project. NNPDF_original is a
-# renamed local copy of the official NNPDF40_nnlo_as_01180_1000 set.
+# Short local names for the two PDF sets used here
+# NNPDF_original is our local name for NNPDF40_nnlo_as_01180_1000
 ORIGINAL_SET_NAME = "NNPDF_original"
 RECONSTRUCTED_SET_NAME = "KDE_reconstruction"
 
-# These channels contain only d, u, s, c, their antiquarks and the gluon.
-# The other channels need bottom quarks or photons, which KDE_reconstruction
-# does not contain, so they are left out of both sides of the comparison.
+# Keep only channels that both sets have, leaving out bottom and photons
 SUPPORTED_CHANNELS = (0, 1, 3, 5, 6, 8)
 
 
@@ -74,8 +71,7 @@ class ObservablePlotStyle:
     def add_legend(self, axes):
         """Place a two-column legend centrally below an axes."""
 
-        # The legend sits outside the grey plotting area so that it cannot
-        # cover either prediction or its uncertainty band.
+        # Put the legend underneath so it does not cover the data
         axes.legend(
             loc="upper center",
             bbox_to_anchor=(0.5, -0.20),
@@ -85,8 +81,7 @@ class ObservablePlotStyle:
     def save(self, figure, filename):
         """Save a notebook figure in the observable-analysis folder."""
 
-        # bbox_inches="tight" is important here because the legend is below
-        # the axes and would otherwise be cut off in the saved image.
+        # "tight" keeps the legend from being cut off
         output_path = SCRIPT_DIR / filename
         figure.savefig(output_path, bbox_inches="tight")
         return output_path
@@ -109,8 +104,7 @@ class PineAPPLObservable:
         self.reconstructed_set_dir = Path(reconstructed_set_dir)
         self.supported_channels = tuple(supported_channels)
 
-        # These are filled by load(). Starting with None makes it clear if a
-        # calculation is attempted before the PineAPPL grid has been loaded.
+        # load() fills these in once the grid and PDF information are ready
         self.grid = None
         self.proton = None
         self.channel_mask = None
@@ -130,24 +124,18 @@ class PineAPPLObservable:
                 f"{self.reconstructed_set_dir}"
             )
 
-        # LHAPDF normally searches its system installation. Our two local PDF
-        # folders live in output/, so that directory is added to the front of
-        # the search path before either set is requested.
+        # Look in our local output folder first
         lhapdf.setVerbosity(0)
         lhapdf.pathsPrepend(str(self.reconstructed_set_dir))
 
         self.grid = Grid.read(str(self.grid_path))
 
-        # The grid describes two ordinary incoming protons. "polarized=False"
-        # means that we are not keeping track of proton spin, and
-        # "time_like=False" identifies an incoming rather than outgoing PDF.
+        # This is an ordinary unpolarized PDF for an incoming proton
         proton_type = ConvType(polarized=False, time_like=False)
         self.proton = Conv(convolution_types=proton_type, pid=2212)
         self.channel_mask = self.make_channel_mask()
 
-        # The original PDF covers a wider x range than the reconstruction. A
-        # fair comparison therefore uses the smaller reconstructed domain for
-        # both sets, rather than giving the original set extra phase space.
+        # Use the smaller reconstructed x range for both sets
         reconstructed_central = lhapdf.mkPDF(RECONSTRUCTED_SET_NAME, 0)
         self.analysis_x_min = reconstructed_central.xMin
         self.analysis_x_max = reconstructed_central.xMax
@@ -171,9 +159,7 @@ class PineAPPLObservable:
                 f"Channel indices are outside the grid: {invalid_channels}"
             )
 
-        # PineAPPL expects one True/False value for every channel in the grid.
-        # We begin with everything switched off and enable only the six
-        # light-flavour/gluon channels that both PDF sets can supply.
+        # Start with every channel off, then switch on the six we can use
         channel_mask = np.zeros(number_of_channels, dtype=bool)
         channel_mask[list(self.supported_channels)] = True
         return channel_mask
@@ -202,18 +188,14 @@ class PineAPPLObservable:
     def make_pdf_function(self, pdf):
         """Return an xfxQ2 callback restricted to the common PDF domain."""
 
-        # Each LHAPDF member advertises the range over which it can safely be
-        # evaluated. PineAPPL will call the small function below many times,
-        # passing it a parton ID, x and Q squared.
+        # Read the safe x and Q squared range for this PDF member
         x_min = pdf.xMin
         x_max = pdf.xMax
         q2_min = pdf.q2Min
         q2_max = pdf.q2Max
 
         def clip_boundary(value, lower, upper, name):
-            # A grid boundary can differ by a final floating-point digit after
-            # being written and read. That tiny difference is harmless, but a
-            # genuinely out-of-range request should never be silently clipped.
+            # Allow tiny rounding differences, but reject a real overshoot
             if value < lower:
                 if np.isclose(value, lower, rtol=1e-8, atol=0.0):
                     return lower
@@ -225,10 +207,8 @@ class PineAPPLObservable:
             return value
 
         def xfx_q2(pid, x, q2):
-            # PineAPPL and LHAPDF can represent the same boundary with slightly
-            # different final digits. Clip only floating-point-level boundary
-            # differences. Genuine out-of-domain x contributions are omitted
-            # from both ensembles, rather than extrapolated from either PDF.
+            # Tiny edge differences are just rounding, anything genuinely
+            # outside our shared x range is set to zero for both sets
             if x < self.analysis_x_min:
                 if np.isclose(x, self.analysis_x_min, rtol=1e-8, atol=0.0):
                     x = self.analysis_x_min
@@ -249,8 +229,7 @@ class PineAPPLObservable:
             safe_x = clip_boundary(x, x_min, x_max, "x")
             safe_q2 = clip_boundary(q2, q2_min, q2_max, "Q2")
 
-            # LHAPDF returns x times the PDF, which is exactly the convention
-            # expected by PineAPPL's convolution callback.
+            # PineAPPL expects the same x times PDF value that LHAPDF returns
             return pdf.xfxQ2(pid, safe_x, safe_q2)
 
         return xfx_q2
@@ -260,9 +239,7 @@ class PineAPPLObservable:
 
         pdf = self.load_pdf_member(set_name, member_index)
 
-        # PineAPPL combines its stored perturbative weights with this member's
-        # PDFs and alpha_s. The result contains one cross-section value for
-        # each muon-direction bin in the grid.
+        # Fold this PDF member through the grid to get one value per bin
         prediction = self.grid.convolve(
             pdg_convs=[self.proton],
             xfxs=[self.make_pdf_function(pdf)],
@@ -293,19 +270,17 @@ class PineAPPLObservable:
         for position, member_index in enumerate(member_indices, start=1):
             predictions.append(self.calculate_member(set_name, member_index))
 
-            # A full run evaluates 1,000 members and can take a while. This
-            # progress message reassures us that the calculation is advancing.
+            # Print an update every 100 replicas because the full run takes a while
             if position % 100 == 0 or position == len(member_indices):
                 print(
                     f"Calculated {position}/{len(member_indices)} members "
                     f"from {set_name}"
                 )
-        # Rows correspond to replicas and columns correspond to observable
-        # bins. This is the shape used by ObservableStatistics below.
+        # One row per replica and one column per observable bin
         return np.vstack(predictions)
 
     def bin_limits(self):
-        """Return the lower and upper pseudorapidity limit of every bin."""
+        """Return the lower and upper dilepton-rapidity limit of every bin."""
 
         if self.grid is None:
             raise RuntimeError("Call load() before requesting bin information")
@@ -316,9 +291,9 @@ class PineAPPLObservable:
         )
 
     def bin_centres(self):
-        """Return the pseudorapidity value at the centre of every bin."""
+        """Return the dilepton rapidity at the centre of every bin."""
 
-        # For a bin [low, high], the plotted x position is simply their average.
+        # Plot each bin halfway between its lower and upper edge
         return self.bin_limits().mean(axis=1)
 
 
@@ -356,28 +331,17 @@ class ObservableStatistics:
     def standard_deviation(self):
         """Return the sample standard deviation in every observable bin."""
 
-        # ddof=1 uses the usual sample standard deviation because the replicas
-        # are a finite sample of the underlying PDF probability distribution.
+        # ddof=1 gives the sample standard deviation across the replicas
         return self.replica_predictions.std(axis=0, ddof=1)
-
-    def percentile_interval(self, lower=16.0, upper=84.0):
-        """Return a percentile-based PDF uncertainty interval."""
-
-        if not 0.0 <= lower < upper <= 100.0:
-            raise ValueError("Percentiles must satisfy 0 <= lower < upper <= 100")
-        # The central 16th-to-84th percentile interval contains 68% of the
-        # replica predictions and does not assume that they are symmetric.
-        return np.percentile(
-            self.replica_predictions, [lower, upper], axis=0
-        )
 
     def summary(self):
         """Return all uncertainty statistics needed by the notebook."""
 
-        lower, upper = self.percentile_interval()
+        mean = self.mean()
+        standard_deviation = self.standard_deviation()
         return {
-            "mean": self.mean(),
-            "standard_deviation": self.standard_deviation(),
-            "lower_68": lower,
-            "upper_68": upper,
+            "mean": mean,
+            "standard_deviation": standard_deviation,
+            "lower_standard_deviation": mean - standard_deviation,
+            "upper_standard_deviation": mean + standard_deviation,
         }
