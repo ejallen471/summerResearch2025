@@ -354,7 +354,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Validate a generated KDE LHAPDF set")
     parser.add_argument(
         "--set-dir", type=Path,
-        default=script_dir / "output" / "KDEReconstructed_NNPDF40",
+        default=script_dir / "output" / "KDE_reconstruction",
     )
     parser.add_argument(
         "--covariance-dir", type=Path,

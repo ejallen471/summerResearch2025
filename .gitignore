@@ -3,4 +3,5 @@
 .DS_Store
 __pycache__/
 *.py[cod]
-02_nnpdfDataCode/06_convertToLhapdfFormat/output/
+/02_nnpdfDataCode/06_convertToLhapdfFormat/output/
+/02_nnpdfDataCode/07_observableAnalysis/LHCB_DY_8TEV.pineappl.lz4

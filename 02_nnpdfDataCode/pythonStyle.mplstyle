@@ -1,28 +1,33 @@
 # pythonStyle.mplstyle
 
-# Use LaTeX for all text rendering
-text.usetex: True
+# Use Matplotlib's bundled Computer Modern renderer. This gives the LaTeX
+# appearance without requiring a separate LaTeX installation.
+text.usetex: False
+mathtext.fontset: cm
+axes.formatter.use_mathtext: True
 
 # LaTeX / Computer Modern style fonts
-font.family: serif
-font.serif: Computer Modern Roman, Times, Palatino, Serif
+font.family: cmr10
 
-font.size: 18
-axes.titlesize: 18
-axes.labelsize: 18
-xtick.labelsize: 14
-ytick.labelsize: 14
+font.size: 11
+axes.titlesize: 12
+axes.labelsize: 12
+xtick.labelsize: 9
+ytick.labelsize: 9
 
-lines.linewidth: 2.5
-lines.markersize: 12
+lines.linewidth: 1.5
+lines.markersize: 5
 lines.markeredgewidth: 0
 
+# Default plot palette: dark blue, muted teal, grey, then supporting colours
+axes.prop_cycle: cycler(color=['003B63', '5EAAA8', '595959', '8C2D4D', 'D49A3A'])
+
 legend.fancybox: True
-legend.framealpha: 0.9
+legend.framealpha: 0.90
 legend.numpoints: 1
 legend.scatterpoints: 1
-legend.title_fontsize: 12
-legend.fontsize: 12
+legend.title_fontsize: 10
+legend.fontsize: 10
 
 axes.facecolor: 0.95
 axes.edgecolor: white
@@ -32,7 +37,7 @@ axes.grid: True
 axes.grid.axis: both
 grid.color: white
 grid.linestyle: -
-grid.linewidth: 1.5
+grid.linewidth: 0.80
 
 xtick.major.size: 0
 xtick.minor.size: 0
@@ -41,6 +46,10 @@ ytick.minor.size: 0
 
 axes.linewidth: 1
 figure.autolayout: True
+figure.figsize: 6, 4
+figure.dpi: 100
+savefig.dpi: 300
+savefig.facecolor: white
 patch.linewidth: 1
 patch.facecolor: 0,0.196078,0.372549
 patch.edgecolor: white

@@ -4,6 +4,10 @@ This folder contains the original rough LHAPDF prototype and a separate
 implementation for converting the fixed-Q KDE reconstruction into LHAPDF's
 `lhagrid1` format.
 
+The generated set is named `KDE_reconstruction`. The comparison source is
+named `NNPDF_original`, a concise local name for the official
+`NNPDF40_nnlo_as_01180_1000` set.
+
 ## Contents
 
 - `generate_lhapdf.py` is a rough prototype for writing LHAPDF `.info` and
@@ -57,6 +61,8 @@ The intended full command is:
 ```bash
 python kde_lhapdf_generator.py --num-replicas 1000
 ```
+
+This writes `output/KDE_reconstruction`.
 
 Validate an existing set with:
 

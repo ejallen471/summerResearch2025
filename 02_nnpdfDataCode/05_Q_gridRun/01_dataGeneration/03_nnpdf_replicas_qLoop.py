@@ -167,7 +167,7 @@ def main():
         EVOLUTION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         # Load pdf set
         # pdf_set = lh.mkPDFs("NNPDF31_nnlo_as_0118") # 3.1 version nnpdf
-        pdf_set = lh.mkPDFs("NNPDF40_nnlo_as_01180_1000") # 4.0 version nnpdf
+        pdf_set = lh.mkPDFs("NNPDF_original")
 
         # Remove central replica
         _ = pdf_set.pop(0)

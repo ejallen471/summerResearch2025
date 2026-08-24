@@ -7,7 +7,7 @@ LHAPDF export.
 ## Contents
 
 - `analyse_predictions_nnpdf40.ipynb` explores precomputed observable
-  predictions from the original NNPDF4.0 replicas. It checks reconstruction of
+  predictions from the `NNPDF_original` replicas. It checks reconstruction of
   the central theory prediction from replica predictions and distinguishes
   observables that depend linearly or quadratically on PDFs.
 
@@ -18,6 +18,5 @@ currently present in this folder.
 
 ## Future role
 
-This stage will eventually contain comparisons between observables calculated
-with the original NNPDF4.0 set and the reconstructed LHAPDF set, including work
-using PineAPPL.
+This stage contains comparisons between observables calculated with
+`NNPDF_original` and `KDE_reconstruction`, including work using PineAPPL.

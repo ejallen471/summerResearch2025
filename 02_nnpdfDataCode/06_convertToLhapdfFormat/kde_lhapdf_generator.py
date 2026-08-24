@@ -27,7 +27,7 @@ File does the following:
     (storing q, mean, covariance and covariance_sqrt)
 
     6. Take each mean vector and reshape into (flavours, x-points),
-    then combine for all Q-values so we have (Q-values, flavours, x-points) - written as KDEReconstructed_NNPDF40_<MEMBER NUMBER>.dat
+    then combine for all Q-values so we have (Q-values, flavours, x-points) - written as KDE_reconstruction_<MEMBER NUMBER>.dat
 
     7. generate random latent vector from standard normal distribution,
     405 dimensional with fixed seed (20250801) - done for each replica
@@ -38,7 +38,7 @@ File does the following:
 
     10. write .info file
 
-    11. write one .dat file for each PDF member - KDEReconstructed_NNPDF40_<MEMBER NUMBER>.dat.
+    11. write one .dat file for each PDF member - KDE_reconstruction_<MEMBER NUMBER>.dat.
 
 """
 
@@ -489,7 +489,7 @@ def build_parser():
         default=data_root / "00_data" / "02_Q_values.txt",
     )
     parser.add_argument("--output-dir", type=Path, default=script_dir / "output")
-    parser.add_argument("--set-name", default="KDEReconstructed_NNPDF40")
+    parser.add_argument("--set-name", default="KDE_reconstruction")
     parser.add_argument("--num-replicas", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=20250801)
     parser.add_argument("--overwrite", action="store_true")
