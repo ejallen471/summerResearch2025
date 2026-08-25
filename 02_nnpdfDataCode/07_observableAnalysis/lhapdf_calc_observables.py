@@ -1,14 +1,13 @@
 """
-Calculate a Drell-Yan observable using PineAPPL and LHAPDF.
+Calculate a Drell-Yan observable using PineAPPL and our two LHAPDF sets (the original NNPDF and reconstruction)
 
-This file contains the calculation classes to be imported and run from the notebook.
+This file contains the calculation classes to be imported and run from the notebook
 
 The selected PineAPPL grid contains bottom and photon contributions, but the
 KDE-reconstructed PDF set contains only d, u, s, c, their antiquarks and the
 gluon. Both PDF ensembles will therefore be evaluated using the same supported
 light-flavour QCD channels: 0, 1, 3, 5, 6 and 8. Contributions outside the
-reconstructed x-domain are also set to zero for both ensembles. The result is
-a common-domain proof of concept, not the complete LHCb cross section.
+reconstructed x-domain are also set to zero for both ensembles
 
 In this file we do the following
 

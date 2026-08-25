@@ -1,10 +1,9 @@
 # 07_observableAnalysis
 
-This folder contains a proof-of-concept calculation of a physical observable
-using the original and KDE-reconstructed PDF ensembles. It tests the complete
-chain from the KDE reconstruction, through LHAPDF, to a PineAPPL prediction.
+This folder contains a calculation of a physical observable
+using the original and KDE-reconstructed PDF ensembles. 
 
-The two local LHAPDF sets are:
+The two LHAPDF sets are:
 
 - `NNPDF_original`: the local concise name for the official
   `NNPDF40_nnlo_as_01180_1000` set;
@@ -34,14 +33,13 @@ The PineAPPL grid describes forward Drell--Yan production at LHCb:
 proton + proton -> Z/gamma* -> lepton + antilepton
 ```
 
-Its embedded metadata identifies the observable as `d sigma / d y_ll`, where
+The metadata identifies the observable as `d sigma / d y_ll`, where
 `y_ll` is the rapidity of the dilepton pair. This can be understood as the
 direction of the reconstructed Z/gamma* system. The grid has 18 bins from 2.0
 to 4.5.
 
 The PineAPPL convolution divides each bin by its stored bin width. The plotted
-quantity is therefore a differential cross section in pb, not a bin-integrated
-cross section:
+quantity is a differential cross section in pb
 
 ```text
 d sigma / d y_ll [pb]
@@ -62,7 +60,7 @@ channels `0, 1, 3, 5, 6, 8`.
 The reconstructed x-grid ends at `x_max = 0.664813948`. The PineAPPL grid can
 request values up to x = 1. Contributions above the reconstructed limit are
 therefore set to zero for both ensembles. Tiny floating-point differences at
-an actual grid boundary are clipped to the boundary, but genuine out-of-range
+an actual grid boundary are clipped to the boundary, but actual out-of-range
 values are not extrapolated.
 
 These restrictions make the result a common-domain proof of concept. It is not
@@ -71,8 +69,7 @@ the complete published LHCb cross section.
 ## Replica calculation and PDF uncertainty
 
 The observable is evaluated using members 1 to 1,000 of each LHAPDF set.
-Member 0 is evaluated separately as the central member, while the main
-uncertainty plot uses the statistics of the 1,000 replicas.
+the uncertainty plot uses the statistics of the 1,000 replicas.
 
 For every observable bin, the code calculates:
 
@@ -80,8 +77,7 @@ For every observable bin, the code calculates:
 - the sample standard deviation, using `ddof=1`.
 
 The shaded band is the replica mean plus or minus one sample standard
-deviation. It represents uncertainty propagated from the PDF replicas only. It
-does not include experimental, scale, numerical or other theory uncertainties.
+deviation.
 
 ## Setup and running
 
@@ -113,19 +109,3 @@ curl -L \
 Then open `analyse_observables.ipynb`, select the repository `.venv` kernel and
 run the cells in order. A 10-replica calculation is performed first as a small
 check before the two full 1,000-replica calculations.
-
-## Current result and limitation
-
-The two ensembles produce the same broad rapidity dependence. However, the
-KDE-reconstructed ensemble gives a higher mean in part of the distribution and
-a much larger observable-level PDF uncertainty.
-
-The reconstruction stores a mean and covariance matrix independently at each
-Q value. A PineAPPL observable combines several flavours, x-values and Q-values
-and can depend on correlations between all of them. Using the same latent
-vector at every Q defines an approximate cross-Q relationship, but it does not
-prove that the original NNPDF cross-Q correlations have been preserved.
-
-The current result therefore demonstrates that the technical pipeline works,
-while revealing an important limitation in the observable-level uncertainty
-that requires further study.
